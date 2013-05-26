@@ -2537,10 +2537,6 @@ static int __devinit s6e63m0_mcde_panel_probe(struct mcde_display_device *ddev)
 	if (ret < 0)
 		dev_err(&(ddev->dev), "failed to add sysfs entries\n");
 
-	ret = device_create_file(&(ddev->dev), &dev_attr_gamma_level);
-	if (ret < 0)
-		dev_err(&(ddev->dev), "failed to add sysfs entries\n");
-
 	ret = device_create_file(&(ddev->dev), &dev_attr_gamma_tune);
 	if (ret < 0)
 		dev_err(&(ddev->dev), "failed to add sysfs entries\n");

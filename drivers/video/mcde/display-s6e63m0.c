@@ -180,7 +180,6 @@ static bool gamma_table_req = false;
 static int gamma_offset;
 static int gamma_val;
 
-module_param(gamma_table_req, bool, 0644);
 
 /* cocafe: S6E63M0 Illumination Tuner */
 /* FIXME: illumination 0 and 3 have color issues! */
@@ -2029,6 +2028,14 @@ static ssize_t s6e63m0_sysfs_store_gamma_table(struct device *dev,
 		return -EINVAL;
 	}
 
+	if (!strncmp(buf, "reset", 5)) {
+		pr_err("s6e63m0: remove gamma table request\n");
+		gamma_table_req = false;
+		s6e63m0_gamma_ctl(lcd);
+
+		return len;
+	}
+
 	ret = sscanf(buf, "%x %x %x %x %x %x %x %x %x %x %x %x %x %x %x %x %x %x %x %x %x", 
 				&buf_table[0], &buf_table[1], 
 				&buf_table[2], &buf_table[3], 
@@ -2059,7 +2066,6 @@ static ssize_t s6e63m0_sysfs_store_gamma_table(struct device *dev,
 	}
 
 	gamma_table_req = true;
-
 	s6e63m0_gamma_ctl(lcd);
 
 	return len;
@@ -2085,24 +2091,21 @@ static ssize_t s6e63m0_sysfs_store_gamma_tune(struct device *dev,
 		return -EINVAL;
 	}
 
-	ret = sscanf(buf, "%d %x", &buf_offset, &buf_val);
+	if (!strncmp(buf, "reset", 5)) {
+		pr_info("s6e63m0: reset tune gamma request\n");
+		gamma_req = false;
+		s6e63m0_gamma_ctl(lcd);
+		return len;
+	}
+
+	ret = sscanf(buf, "%x %x", &buf_offset, &buf_val);
 
 	if (!ret) {
 		pr_info("s6e63m0: invalid input(s)\n");
 		return -EINVAL;
 	}
 
-	if (buf_offset < 0 || buf_offset > 47) {
-		pr_info("s6e63m0: invalid input(s)\n");
-		return -EINVAL;
-	}
-
-	if (buf_val < 0) {
-		pr_info("s6e63m0: cancel tuned gamma value\n");
-		gamma_req = false;
-		s6e63m0_gamma_ctl(lcd);
-		return len;
-	} else if (buf_val > 255) {
+	if ((buf_offset < 0) || (buf_offset > 47) || (buf_val < 0) || (buf_val > 255)) {
 		pr_info("s6e63m0: invalid input(s)\n");
 		return -EINVAL;
 	}
@@ -2120,7 +2123,7 @@ static ssize_t s6e63m0_sysfs_store_gamma_tune(struct device *dev,
 	return len;
 }
 static DEVICE_ATTR(gamma_tune, 0200,
-		NULL, s6e63m0_sysfs_store_gamma_tune);
+			NULL, s6e63m0_sysfs_store_gamma_tune);
 
 static ssize_t s6e63m0_sysfs_show_filter_R(struct device *dev,
 				      struct device_attribute *attr, char *buf)
@@ -2145,19 +2148,22 @@ static ssize_t s6e63m0_sysfs_store_filter_R(struct device *dev,
 		return -EINVAL;
 	}
 
+	if (!strncmp(buf, "reset", 5)) {
+		pr_info("s6e63m0: reset R filter\n");
+
+		R_req = false;
+		s6e63m0_gamma_ctl(lcd);
+
+		return len;
+	}
+
 	ret = sscanf(buf, "%d", &buf_val);
 
 	if (!ret) {
 		pr_info("s6e63m0: invalid input\n");
 	}
 
-	if (buf_val < GAMMA_VAL_MIN) {
-		pr_info("s6e63m0: reset R filter\n");
-
-		R_req = false;
-
-		s6e63m0_gamma_ctl(lcd);
-	} else if (buf_val >= GAMMA_VAL_MIN && buf_val <= GAMMA_VAL_MAX) {
+	if (buf_val >= GAMMA_VAL_MIN && buf_val <= GAMMA_VAL_MAX) {
 		buf_R = s6e63m0_22_gamma_table[R_OFFSET];
 
 		R_val = buf_val;
@@ -2198,19 +2204,22 @@ static ssize_t s6e63m0_sysfs_store_filter_G(struct device *dev,
 		return -EINVAL;
 	}
 
+	if (!strncmp(buf, "reset", 5)) {
+		pr_info("s6e63m0: reset G filter\n");
+
+		G_req = false;
+		s6e63m0_gamma_ctl(lcd);
+
+		return len;
+	}
+
 	ret = sscanf(buf, "%d", &buf_val);
 
 	if (!ret) {
 		pr_info("s6e63m0: invalid input\n");
 	}
 
-	if (buf_val < GAMMA_VAL_MIN) {
-		pr_info("s6e63m0: reset G filter\n");
-
-		G_req = false;
-
-		s6e63m0_gamma_ctl(lcd);
-	} else if (buf_val >= GAMMA_VAL_MIN && buf_val <= GAMMA_VAL_MAX) {
+	if (buf_val >= GAMMA_VAL_MIN && buf_val <= GAMMA_VAL_MAX) {
 		buf_G = s6e63m0_22_gamma_table[G_OFFSET];
 
 		G_val = buf_val;
@@ -2251,19 +2260,22 @@ static ssize_t s6e63m0_sysfs_store_filter_B(struct device *dev,
 		return -EINVAL;
 	}
 
+	if (!strncmp(buf, "reset", 5)) {
+		pr_info("s6e63m0: reset B filter\n");
+
+		B_req = false;
+		s6e63m0_gamma_ctl(lcd);
+
+		return len;
+	}
+
 	ret = sscanf(buf, "%d", &buf_val);
 
 	if (!ret) {
 		pr_info("s6e63m0: invalid input\n");
 	}
 
-	if (buf_val < GAMMA_VAL_MIN) {
-		pr_info("s6e63m0: reset B filter\n");
-
-		B_req = false;
-
-		s6e63m0_gamma_ctl(lcd);
-	} else if (buf_val >= GAMMA_VAL_MIN && buf_val <= GAMMA_VAL_MAX) {
+	if (buf_val >= GAMMA_VAL_MIN && buf_val <= GAMMA_VAL_MAX) {
 		buf_B = s6e63m0_22_gamma_table[B_OFFSET];
 
 		B_val = buf_val;
@@ -2290,8 +2302,19 @@ static ssize_t s6e63m0_sysfs_show_update_brihtness(struct device *dev,
 
 	return sprintf(buf, "Updating brightness...\n");
 }
-static DEVICE_ATTR(brightness_update, 0444,
-		s6e63m0_sysfs_show_update_brihtness, NULL);
+
+static ssize_t s6e63m0_sysfs_store_update_brihtness(struct device *dev,
+				       struct device_attribute *attr,
+				       const char *buf, size_t len)
+{
+	struct s6e63m0 *lcd = dev_get_drvdata(dev);
+
+	update_brightness(lcd, 1);
+
+	return len;
+}
+static DEVICE_ATTR(brightness_update, 0644,
+		s6e63m0_sysfs_show_update_brihtness, s6e63m0_sysfs_store_update_brihtness);
 
 static ssize_t s6e63m0_sysfs_show_illumination(struct device *dev,
 				      struct device_attribute *attr, char *buf)
@@ -2307,6 +2330,15 @@ static ssize_t s6e63m0_sysfs_store_illumination(struct device *dev,
 	int buf_val;
 	int ret;
 
+	if (!strncmp(buf, "reset", 5)) {
+		pr_err("s6e63m0: use illumination table now\n");
+
+		illumination_req = false;
+		update_brightness(lcd, 1);
+
+		return len;
+	}
+
 	ret = sscanf(buf, "%d", &buf_val);
 
 	if (!ret) {
@@ -2321,19 +2353,10 @@ static ssize_t s6e63m0_sysfs_store_illumination(struct device *dev,
 	}
 	#endif
 
-	if (buf_val < 0) {
-		pr_err("s6e63m0: use illumination table now\n");
-
-		illumination_req = false;
-		update_brightness(lcd, 1);
-
-		return len;
-	}
-
 	illumination_req = true;
 	illumination_val = buf_val;
 
-	pr_info("s6e63m0: illumination [%d]\n", illumination_val);
+	pr_info("s6e63m0: custom illumination [%d]\n", illumination_val);
 
 	update_brightness(lcd, 1);
 
@@ -2414,6 +2437,7 @@ static ssize_t s6e63m0_sysfs_store_ulow_brightness(struct device *dev,
 	int buf_val;
 	int ret;
 
+	/* Say 0 or 1 */
 	ret = sscanf(buf, "%d", &buf_val);
 
 	if (!ret) {
@@ -2431,7 +2455,7 @@ static ssize_t s6e63m0_sysfs_store_ulow_brightness(struct device *dev,
 	if (illumination_req)
 		illumination_val = ILLUMINATION_MIN;
 
-	pr_info("s6e63m0: ulow brightness [%d]\n", illumination_req);
+	pr_info("s6e63m0: ulow brightness %s\n", illumination_req ? "enable" : "disable");
 
 	update_brightness(lcd, 1);
 

@@ -33,7 +33,7 @@
 #include <mach/sec_getlog.h>
 #endif
 
-#define PRCMU_DPI_CLK_FREQ	62000000
+#define PRCMU_DPI_CLK_FREQ	67000000
 	 
 #ifdef CONFIG_FB_MCDE
 

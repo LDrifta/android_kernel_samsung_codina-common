@@ -146,13 +146,13 @@ static int apparmor_capget(struct task_struct *target, kernel_cap_t *effective,
 	return 0;
 }
 
-static int apparmor_capable(const struct cred *cred, struct user_namespace *ns,
-			    int cap, int audit)
+static int apparmor_capable(struct task_struct *task, const struct cred *cred,
+			    struct user_namespace *ns, int cap, int audit)
 {
 	struct aa_profile *profile;
 	struct aa_label *label;
 	/* cap_capable returns 0 on success, else -EPERM */
-	int i, error = cap_capable(cred, ns, cap, audit);
+	int i, error = cap_capable(task, cred, ns, cap, audit);
 	if (error)
 		return error;
 
@@ -161,7 +161,7 @@ static int apparmor_capable(const struct cred *cred, struct user_namespace *ns,
 		return 0;
 
 	label_for_each_confined(i, label, profile) {
-		int e = aa_capable(current, profile, cap, audit);
+		int e = aa_capable(task, profile, cap, audit);
 		if (e)
 			error = e;
 	}
@@ -292,7 +292,7 @@ static int apparmor_path_unlink(struct path *dir, struct dentry *dentry)
 }
 
 static int apparmor_path_mkdir(struct path *dir, struct dentry *dentry,
-			       umode_t mode)
+			       int mode)
 {
 	return common_perm_create(OP_MKDIR, dir, dentry, AA_MAY_CREATE,
 				  S_IFDIR);
@@ -304,7 +304,7 @@ static int apparmor_path_rmdir(struct path *dir, struct dentry *dentry)
 }
 
 static int apparmor_path_mknod(struct path *dir, struct dentry *dentry,
-			       umode_t mode, unsigned int dev)
+			       int mode, unsigned int dev)
 {
 	return common_perm_create(OP_MKNOD, dir, dentry, AA_MAY_CREATE, mode);
 }
@@ -374,13 +374,13 @@ static int apparmor_path_rename(struct path *old_dir, struct dentry *old_dentry,
 	return error;
 }
 
-static int apparmor_path_chmod(struct path *path, umode_t mode)
+static int apparmor_path_chmod(struct dentry *dentry, struct vfsmount *mnt,
+			       mode_t mode)
 {
-	if (!mediated_filesystem(path->dentry->d_inode))
+	if (!mediated_filesystem(dentry->d_inode))
 		return 0;
 
-	return common_perm_mnt_dentry(OP_CHMOD, path->mnt, path->dentry,
-				      AA_MAY_CHMOD);
+	return common_perm_mnt_dentry(OP_CHMOD, mnt, dentry, AA_MAY_CHMOD);
 }
 
 static int apparmor_path_chown(struct path *path, kuid_t uid, kgid_t gid)

@@ -694,6 +694,13 @@ static void gavini_power_on(struct gavini_lcd_driver *lcd)
 		if (pd->power_on_delay)
 			msleep(pd->power_on_delay);
 	}
+	
+	if (!pd->gpio_cfg_lateresume) {
+		dev_err(lcd->dev, "gpio_cfg_lateresume is NULL.\n");
+		goto err_exit;
+	} else {
+		pd->gpio_cfg_lateresume();
+	}
 
 	if (!pd->reset) {
 		dev_err(lcd->dev, "reset is NULL.\n");
@@ -799,6 +806,12 @@ static int gavini_power_off(struct gavini_lcd_driver *lcd)
 
 	if (pd->sleep_in_delay)
 		msleep(pd->sleep_in_delay);
+		
+	if (!pd->gpio_cfg_earlysuspend) {
+		dev_err(lcd->dev, "gpio_cfg_earlysuspend is NULL.\n");
+		return -EFAULT;
+	} else
+		pd->gpio_cfg_earlysuspend();
 
 	if (!pd->power_on) {
 		dev_err(lcd->dev, "power_on is NULL.\n");

@@ -1,7 +1,7 @@
 /*
  * BCMSDH Function Driver for the native SDIO/MMC driver in the Linux Kernel
  *
- * Copyright (C) 1999-2013, Broadcom Corporation
+ * Copyright (C) 1999-2012, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: bcmsdh_sdmmc_linux.c 383841 2013-02-08 00:10:58Z $
+ * $Id: bcmsdh_sdmmc_linux.c 381717 2013-01-29 07:10:21Z $
  */
 
 #include <typedefs.h>
@@ -196,7 +196,11 @@ static int bcmsdh_sdmmc_suspend(struct device *pdev)
 	if (func->num != 2)
 		return 0;
 
+#ifdef CUSTOMER_HW4
+	sd_err(("%s Enter\n", __FUNCTION__));
+#else
 	sd_trace(("%s Enter\n", __FUNCTION__));
+#endif
 	if (dhd_os_check_wakelock(bcmsdh_get_drvdata()))
 		return -EBUSY;
 	sdio_flags = sdio_get_host_pm_caps(func);
@@ -212,9 +216,9 @@ static int bcmsdh_sdmmc_suspend(struct device *pdev)
 		sd_err(("%s: error while trying to keep power\n", __FUNCTION__));
 		return ret;
 	}
-#if defined(OOB_INTR_ONLY)
+#if defined(OOB_INTR_ONLY) && !defined(CUSTOMER_HW4)
 	bcmsdh_oob_intr_set(0);
-#endif 
+#endif /* OOB_INTR_ONLY && !CUSTOMER_HW4 */
 	dhd_mmc_suspend = TRUE;
 	smp_mb();
 
@@ -223,15 +227,19 @@ static int bcmsdh_sdmmc_suspend(struct device *pdev)
 
 static int bcmsdh_sdmmc_resume(struct device *pdev)
 {
-#if defined(OOB_INTR_ONLY)
+#if defined(OOB_INTR_ONLY) && !defined(CUSTOMER_HW4)
 	struct sdio_func *func = dev_to_sdio_func(pdev);
-#endif 
+#endif /* OOB_INTR_ONLY && !CUSTOMER_HW4 */
+#ifdef CUSTOMER_HW4
+	sd_err(("%s Enter\n", __FUNCTION__));
+#else
 	sd_trace(("%s Enter\n", __FUNCTION__));
+#endif
 	dhd_mmc_suspend = FALSE;
-#if defined(OOB_INTR_ONLY)
+#if defined(OOB_INTR_ONLY) && !defined(CUSTOMER_HW4)
 	if ((func->num == 2) && dhd_os_check_if_up(bcmsdh_get_drvdata()))
 		bcmsdh_oob_intr_set(1);
-#endif 
+#endif /* OOB_INTR_ONLY && !CUSTOMER_HW4 */
 
 	smp_mb();
 	return 0;
@@ -398,7 +406,7 @@ int sdio_function_init(void)
 		return -ENOMEM;
 
 	error = sdio_register_driver(&bcmsdh_sdmmc_driver);
-	if (error) {
+	if (error && gInstance) {
 		kfree(gInstance);
 		gInstance = NULL;
 	}

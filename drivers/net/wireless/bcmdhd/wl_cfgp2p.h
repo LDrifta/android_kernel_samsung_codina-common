@@ -1,7 +1,7 @@
 /*
  * Linux cfgp2p driver
  *
- * Copyright (C) 1999-2013, Broadcom Corporation
+ * Copyright (C) 1999-2012, Broadcom Corporation
  * 
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wl_cfgp2p.h 401719 2013-05-13 12:47:24Z $
+ * $Id: wl_cfgp2p.h 392206 2013-03-21 04:02:54Z $
  */
 #ifndef _wl_cfgp2p_h_
 #define _wl_cfgp2p_h_
@@ -136,7 +136,11 @@ enum wl_cfgp2p_status {
 /* dword align allocation */
 #define WLC_IOCTL_MAXLEN 8192
 
+#ifdef CUSTOMER_HW4
+#define CFGP2P_ERROR_TEXT		"CFGP2P-INFO2) "
+#else
 #define CFGP2P_ERROR_TEXT		"CFGP2P-ERROR) "
+#endif
 
 
 #define CFGP2P_ERR(args)									\
@@ -295,9 +299,6 @@ wl_cfgp2p_set_p2p_ps(struct wl_priv *wl, struct net_device *ndev, char* buf, int
 extern u8 *
 wl_cfgp2p_retreive_p2pattrib(void *buf, u8 element_id);
 
-extern u8*
-wl_cfgp2p_find_attrib_in_all_p2p_Ies(u8 *parse, u32 len, u32 attrib);
-
 extern u8 *
 wl_cfgp2p_retreive_p2p_dev_addr(wl_bss_info_t *bi, u32 bi_length);
 
@@ -325,16 +326,20 @@ wl_cfgp2p_is_ifops(const struct net_device_ops *if_ops);
 #define WL_P2P_TEMP_CHAN 11
 
 /* If the provision discovery is for JOIN operations,
- * or the device discoverablity frame is destined to GO
  * then we need not do an internal scan to find GO.
- */
-#define IS_ACTPUB_WITHOUT_GROUP_ID(p2p_ie, len) \
+*/
+#define IS_PROV_DISC_WITHOUT_GROUP_ID(p2p_ie, len) \
 	(wl_cfgp2p_retreive_p2pattrib(p2p_ie, P2P_SEID_GROUP_ID) == NULL)
 
 #define IS_GAS_REQ(frame, len) (wl_cfgp2p_is_gas_action(frame, len) && \
 					((frame->action == P2PSD_ACTION_ID_GAS_IREQ) || \
 					(frame->action == P2PSD_ACTION_ID_GAS_CREQ)))
-
+#define IS_P2P_PUB_ACT_REQ(frame, p2p_ie, len) \
+					(wl_cfgp2p_is_pub_action(frame, len) && \
+						((frame->subtype == P2P_PAF_GON_REQ) || \
+						(frame->subtype == P2P_PAF_INVITE_REQ) || \
+						((frame->subtype == P2P_PAF_PROVDIS_REQ) && \
+						IS_PROV_DISC_WITHOUT_GROUP_ID(p2p_ie, len))))
 #define IS_P2P_PUB_ACT_RSP_SUBTYPE(subtype) ((subtype == P2P_PAF_GON_RSP) || \
 							((subtype == P2P_PAF_GON_CONF) || \
 							(subtype == P2P_PAF_INVITE_RSP) || \

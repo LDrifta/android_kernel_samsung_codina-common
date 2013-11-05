@@ -233,7 +233,7 @@ static const u8 DCS_CMD_SEQ_S6D27A1_ORIENT_180[] = {
 extern bool power_off_charging;
 extern u32 sec_bootmode;
 
-#if defined(CONFIG_MACH_CODINA_CHN) || defined(CONFIG_MACH_CODINA_EURO) || defined(CONFIG_MACH_CODINA)
+#if defined(CONFIG_MACH_CODINA_CHN) || defined(CONFIG_MACH_CODINA_EURO)
 extern u32 sec_lpm_bootmode;
 #endif
 static int s6d27a1_write_dcs_sequence(struct s6d27a1_dpi *lcd, const u8 *p_seq);
@@ -764,7 +764,7 @@ static void esd_work_func(struct work_struct *work)
 {
 	struct s6d27a1_dpi *lcd = container_of(work,
 					struct s6d27a1_dpi, esd_work);
-#if defined(CONFIG_MACH_CODINA_CHN) || defined(CONFIG_MACH_CODINA_EURO) || defined(CONFIG_MACH_CODINA)
+#if defined(CONFIG_MACH_CODINA_CHN) || defined(CONFIG_MACH_CODINA_EURO)
 	if (lcd->esd_enable && !lcd->esd_processing && !sec_lpm_bootmode
 							&& (sec_bootmode != 2)) {
 #else
@@ -791,7 +791,7 @@ static void esd_work_func(struct work_struct *work)
 static irqreturn_t esd_interrupt_handler(int irq, void *data)
 {
 	struct s6d27a1_dpi *lcd = data;
-#if defined(CONFIG_MACH_CODINA_CHN) || defined(CONFIG_MACH_CODINA_EURO) || defined(CONFIG_MACH_CODINA)
+#if defined(CONFIG_MACH_CODINA_CHN) || defined(CONFIG_MACH_CODINA_EURO)
 	if (lcd->esd_enable && !lcd->esd_processing && !sec_lpm_bootmode
 								&& (sec_bootmode != 2)) {
 #else

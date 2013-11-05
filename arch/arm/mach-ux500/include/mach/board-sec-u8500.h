@@ -348,8 +348,11 @@ extern unsigned int sec_debug_settings;
 /* GPIO for Codina V0.4 boards */
 #define LCD_BL_CTRL_CODINA_R0_4		69
 #define GPS_ON_OFF_CODINA_BRINGUP	86
+#if defined(CONFIG_MACH_CODINA_EURO)
+#define GPS_RST_N_CODINA_BRINGUP_R0_4        21
+#else
 #define GPS_RST_N_CODINA_BRINGUP	209
-
+#endif
 /* GPIO for Codina V0.5 boards */
 #define GPS_RST_N_CODINA_BRINGUP_R0_5        21
 

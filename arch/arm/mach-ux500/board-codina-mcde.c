@@ -38,8 +38,8 @@
 
 #ifdef CONFIG_FB_MCDE
 
-#define PRCMU_DPI_CLK_SHARP_FREQ	30720000
-#define PRCMU_DPI_CLK_SMD_FREQ		49920000
+#define PRCMU_DPI_CLK_SHARP_FREQ  54080000
+ #define PRCMU_DPI_CLK_SMD_FREQ   54080000
 
 enum {
 	PRIMARY_DISPLAY_ID,
@@ -135,9 +135,8 @@ struct ssg_dpi_display_platform_data codina_dpi_pri_display_info = {
 	.reset_gpio		= LCD_RESX_CODINA_R0_0,
 	.pwr_gpio		= LCD_PWR_EN_CODINA_R0_0,
 	.bl_ctrl		= false,
-	.power_on_delay		= 10,
-	.reset_delay		= 10,
-	.sleep_out_delay	= 120, /* 50ms for WS2401, but 120ms for S6D27A1 */
+        .power_on_delay         = 5,  /* Optimize Wake Up */
+        .reset_delay            = 5,  /* Optimize Wake Up */
 
 	.display_off_delay	= 25,
 	.sleep_in_delay		= 120,
@@ -467,6 +466,9 @@ int __init init_codina_display_devices(void)
 		codina_dpi_pri_display_info.video_mode.vsw = 2;
 		codina_dpi_pri_display_info.video_mode.vbp = 8;
 		codina_dpi_pri_display_info.video_mode.vfp = 18;
+#if defined(CONFIG_MACH_CODINA_EURO)
+                codina_dpi_pri_display_info.sleep_out_delay = 30
+#endif
 	} else {
 		generic_display0.name = LCD_DRIVER_NAME_S6D27A1;
 		codina_dpi_pri_display_info.video_mode.hsw = 2;
@@ -475,6 +477,9 @@ int __init init_codina_display_devices(void)
 		codina_dpi_pri_display_info.video_mode.vsw = 2;
 		codina_dpi_pri_display_info.video_mode.vbp = 11;
 		codina_dpi_pri_display_info.video_mode.vfp = 10;
+#if defined(CONFIG_MACH_CODINA_EURO)
+                codina_dpi_pri_display_info.sleep_out_delay = 50
+#endif
 	}
 	
 	ret = mcde_display_device_register(&generic_display0);

@@ -21,7 +21,12 @@
 #include <mach/irqs.h>
 
 #define WLAN_PROBE_DELAY 3000 /* 3 seconds */
+
+#if defined(CONFIG_MACH_CODINA_EURO)
+#define WLAN_LIMIT (3000/3)  /* If we have more than 1000 irqs per second */
+#else
 #define WLAN_LIMIT (12000/3) /* If we have more than 4000 irqs per second */
+#endif
 
 /*
  * MMC TODO:

@@ -57,9 +57,9 @@
 /* DEBUG_LEVEL */
 #define DEBUG_LEVEL_LOW	(0x4f4c)
 #define DEBUG_LEVEL_MID	(0x494d)
-#define DEBUG_LEVEL_HIGH	(0x4948)
+#define DEBUG_LEVEL_HIGH (0x4948)
 
-#if defined(CONFIG_MACH_JANICE_CHN) || defined(CONFIG_MACH_CODINA_CHN) || defined(CONFIG_MACH_GAVINI_CHN)
+#if defined(CONFIG_MACH_JANICE_CHN) || defined(CONFIG_MACH_CODINA_CHN) || defined(CONFIG_MACH_GAVINI_CHN) || defined(CONFIG_MACH_CODINA_EURO)
 extern u32 sec_lpm_bootmode;
 #endif
 

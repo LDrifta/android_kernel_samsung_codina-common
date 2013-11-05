@@ -112,10 +112,8 @@ static int brcm_init_wlan_mem(void)
 	if(!wlan_static_scan_buf0)
 		goto err_mem_alloc;
 	wlan_static_scan_buf1 = kmalloc (65536, GFP_KERNEL);
-	if(!wlan_static_scan_buf1){
-		kfree(wlan_static_scan_buf0);
+	if(!wlan_static_scan_buf1)
 		goto err_mem_alloc;
-	}
 
 	printk("%s: WIFI MEM Allocated\n", __FUNCTION__);
 	return 0;
@@ -208,12 +206,12 @@ static int sdi0_ios_handler(struct device *dev, struct mmc_ios *ios,  enum rpm_s
 		break;
 	case MMC_POWER_ON:
 		/* Enable level shifter */
-		gpio_direction_output(TXS0206_EN_GOLDEN_BRINGUP, 1);
-		udelay(500);
+		gpio_direction_output(TXS0206_EN_SKOMER_BRINGUP, 1);
+		udelay(100);
 		break;
 	case MMC_POWER_OFF:
 		/* Disable level shifter */
-		gpio_direction_output(TXS0206_EN_GOLDEN_BRINGUP, 0);
+		gpio_direction_output(TXS0206_EN_SKOMER_BRINGUP, 0);
 		break;
 	}
 	power_mode = ios->power_mode;
@@ -248,21 +246,21 @@ static void __init sdi0_configure(void)
 {
 	int ret;
 
-	ret = gpio_request(TXS0206_EN_GOLDEN_BRINGUP, "SD Card LS EN");
+	ret = gpio_request(TXS0206_EN_SKOMER_BRINGUP, "SD Card LS EN");
 	if (ret) {
 		printk(KERN_WARNING "unable to config gpios for level shifter.\n");
 		return;
 	}
 
 	/* Enable level shifter */
-	gpio_direction_output(TXS0206_EN_GOLDEN_BRINGUP, 0);
+	gpio_direction_output(TXS0206_EN_SKOMER_BRINGUP, 0);
 }
 
 /*
  * SDI1 (SDIO WLAN)
  */
 static bool sdi1_card_power_on;
-static int golden_wifi_cd; /* WIFI virtual 'card detect' status */
+static int skomer_wifi_cd; /* WIFI virtual 'card detect' status */
 static unsigned int sdi1_card_status(struct device *dev)
 {
 #if 0		//hyeok-test
@@ -271,13 +269,13 @@ static unsigned int sdi1_card_status(struct device *dev)
 	else
 		return 0;
 #else
-	return golden_wifi_cd;
+	return skomer_wifi_cd;
 #endif
  }
 static void (*wifi_status_cb)(int card_present, void *dev_id);
 static void *wifi_status_cb_devid;
 
-static int golden_wifi_status_register(
+static int skomer_wifi_status_register(
 		                void (*callback)(int card_present, void *dev_id),
 				                void *dev_id)
 {
@@ -314,7 +312,8 @@ static struct mmci_platform_data ssg_sdi1_data = {
 	.ocr_mask	= MMC_VDD_29_30,
 	.f_max		= 50000000,
 #ifdef CONFIG_STE_WLAN
-	.capabilities	= MMC_CAP_4_BIT_DATA,
+	.capabilities	= MMC_CAP_4_BIT_DATA |
+				MMC_CAP_SD_HIGHSPEED,
 #else
 	.capabilities	= MMC_CAP_4_BIT_DATA |
 				MMC_CAP_SD_HIGHSPEED /*|*/
@@ -335,7 +334,7 @@ static struct mmci_platform_data ssg_sdi1_data = {
 	.dma_tx_param	= &sdi1_dma_cfg_tx,
 #endif
 #ifndef CONFIG_STE_WLAN
-	.register_status_notify = golden_wifi_status_register,
+	.register_status_notify = skomer_wifi_status_register,
 #endif
 };
 
@@ -367,23 +366,21 @@ static void suspend_resume_handler_sdi2(struct mmc_host *host, bool suspend)
 {
    if (suspend) {
 	printk(KERN_ERR "[MMC] TURN OFF EXTERNAL LDO\n");
-	gpio_set_value(MEM_LDO_EN_GOLDEN_BRINGUP, 0);
+	gpio_set_value(MEM_LDO_EN_SKOMER_BRINGUP, 0);
    } else {
 	printk(KERN_ERR "[MMC] TURN ON EXTERNAL LDO\n");
 	/* Enable external LDO */
-	gpio_set_value(MEM_LDO_EN_GOLDEN_BRINGUP, 1);
+	gpio_set_value(MEM_LDO_EN_SKOMER_BRINGUP, 1);
    }
 }
 
 static struct mmci_platform_data ssg_sdi2_data = {
 	.ocr_mask	= MMC_VDD_165_195,
-	.f_max		= 100000000,
+	.f_max		= 50000000,
 	.capabilities	= MMC_CAP_4_BIT_DATA |
 				MMC_CAP_8_BIT_DATA |
 				MMC_CAP_MMC_HIGHSPEED|
-				MMC_CAP_ERASE |
-				MMC_CAP_1_8V_DDR |
-				MMC_CAP_UHS_DDR50,
+				MMC_CAP_ERASE,
 	.capabilities2	= MMC_CAP2_NO_SLEEP_CMD,
 //	.pm_flags	= MMC_PM_KEEP_POWER,
 	.gpio_cd	= -1,
@@ -399,8 +396,8 @@ static struct mmci_platform_data ssg_sdi2_data = {
 
 
 /* BCM */
-static int wifi_gpio_reset	= WLAN_RST_N_GOLDEN_BRINGUP;
-static int wifi_gpio_irq	= WL_HOST_WAKE_GOLDEN_BRINGUP;
+static int wifi_gpio_reset	= WLAN_RST_N_SKOMER_BRINGUP;
+static int wifi_gpio_irq	= WL_HOST_WAKE_SKOMER_BRINGUP;
 
 static int brcm_wlan_power(int onoff)
 {
@@ -429,7 +426,7 @@ static int brcm_wlan_reset(int onoff)
 static int brcm_set_carddetect(int val)
 {
 	pr_debug("%s: %d\n", __func__, val);
-	golden_wifi_cd = val;
+	skomer_wifi_cd = val;
 
 	if (wifi_status_cb)
 		wifi_status_cb(val, wifi_status_cb_devid);
@@ -517,8 +514,8 @@ static void *brcm_wlan_get_country_code(char *ccode)
 static struct resource brcm_wlan_resources[] = {
 	[0] = {
 		.name	= "bcmdhd_wlan_irq",
-		.start	= GPIO_TO_IRQ(WL_HOST_WAKE_GOLDEN_BRINGUP),
-		.end	= GPIO_TO_IRQ(WL_HOST_WAKE_GOLDEN_BRINGUP),
+		.start	= GPIO_TO_IRQ(WL_HOST_WAKE_SKOMER_BRINGUP),
+		.end	= GPIO_TO_IRQ(WL_HOST_WAKE_SKOMER_BRINGUP),
 //chanyun 12.21		.flags	= IORESOURCE_IRQ | IORESOURCE_IRQ_LOWEDGE,
 		.flags = IORESOURCE_IRQ | IRQF_TRIGGER_FALLING /*IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHLEVEL | IORESOURCE_IRQ_SHAREABLE*/,
 	},
@@ -544,7 +541,7 @@ static struct platform_device brcm_device_wlan = {
 	},
 };
 
-static void golden_wifi_init(void)
+static void skomer_wifi_init(void)
 {
 	int32_t status = 0;
 
@@ -569,15 +566,15 @@ static void golden_wifi_init(void)
 	return;
 }
 
-static void golden_sdi2_init(void)
+static void skomer_sdi2_init(void)
 {
 	int32_t status = 0;
 
 	/* Enable the eMMC_EN GPIO */
-	status = gpio_request(MEM_LDO_EN_GOLDEN_BRINGUP, "eMMC_EN");
+	status = gpio_request(MEM_LDO_EN_SKOMER_BRINGUP, "eMMC_EN");
 
-	gpio_direction_output(MEM_LDO_EN_GOLDEN_BRINGUP, 1);
-	gpio_set_value(MEM_LDO_EN_GOLDEN_BRINGUP, 1);
+	gpio_direction_output(MEM_LDO_EN_SKOMER_BRINGUP, 1);
+	gpio_set_value(MEM_LDO_EN_SKOMER_BRINGUP, 1);
 
 	return;
 }
@@ -620,7 +617,7 @@ static int __init ssg_sdi_init(void)
 	u32 periphid = 0x10480180;
 
 	db8500_add_sdi2(&ssg_sdi2_data, periphid);
-	golden_sdi2_init();
+	skomer_sdi2_init();
 
 	if ((sec_debug_settings & SEC_DBG_STM_VIA_SD_OPTS) == 0) {
 		/* not tracing via SDI0 pins, so can enable SDI0 */
@@ -632,7 +629,7 @@ static int __init ssg_sdi_init(void)
 
 #ifndef CONFIG_STE_WLAN
 	/* BCM */
-	golden_wifi_init();
+	skomer_wifi_init();
 #endif
 
 #ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM

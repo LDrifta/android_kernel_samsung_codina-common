@@ -38,13 +38,21 @@
 #include <linux/mfd/abx500/ab8500-denc.h>
 #include <linux/spi/stm_msp.h>
 #include <plat/gpio-nomadik.h>
-#include <linux/input/bt404_ts.h>
+
+#ifdef CONFIG_KEYBOARD_NTS_TOUCHKEY
+#include <linux/input/nts-touchkey.h>
+#endif
+
+#ifdef CONFIG_KEYBOARD_TC360_TOUCHKEY
+#include <linux/input/tc360-touchkey.h>
+#endif
+
 #include <linux/leds.h>
-#include <linux/leds-regulator.h>
 #include <linux/mfd/abx500/ux500_sysctrl.h>
 #include <video/ktd253x_bl.h>
 #include <../drivers/staging/android/timed_gpio.h>
 
+#include <linux/nfc/pn547.h>
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci.h>
 
@@ -54,7 +62,6 @@
 #include <plat/i2c.h>
 #include <plat/ste_dma40.h>
 #include <plat/pincfg.h>
-#include <plat/gpio-nomadik.h>
 
 #include <mach/hardware.h>
 #include <mach/setup.h>
@@ -70,19 +77,29 @@
 #ifdef CONFIG_PROXIMITY_TMD2672
 #include <mach/tmd2672.h>
 #endif
+#ifdef CONFIG_PROXIMITY_PX3215
+#include <mach/px3215.h>
+#endif
+#ifdef CONFIG_SENSORS_STK3X1X
+#include <mach/stk3x1x.h>
+#endif
+#include <linux/mpu6050_input.h>
 #include <mach/crypto-ux500.h>
 #include <mach/pm.h>
-#include <mach/reboot_reasons.h>
 #include <linux/yas.h>
 
 
 #include <video/mcde_display.h>
+
 #ifdef CONFIG_DB8500_MLOADER
 #include <mach/mloader-dbx500.h>
 #endif
 
+#ifdef CONFIG_BT_BCM4334
+#include "board-bluetooth-bcm4334.h"
+#endif
 #include "devices-db8500.h"
-#include "board-codina-regulators.h"
+#include "board-skomer-regulators.h"
 #include "pins.h"
 #include "pins-db8500.h"
 #include "cpu-db8500.h"
@@ -90,10 +107,6 @@
 #include "board-sec-bm.h"
 #ifdef CONFIG_STE_WLAN
 #include "board-mop500-wlan.h"
-#elif defined (CONFIG_BT_BCM4330)
-#include "board-bluetooth-bcm4330.h"
-#else
-#include "board-bluetooth-bcm4334.h"
 #endif
 #include <mach/board-sec-ux500.h>
 #include <linux/mfd/abx500/ab8500-gpadc.h>
@@ -125,6 +138,8 @@ EXPORT_SYMBOL(use_ab8505_iddet);
 
 struct device *gps_dev;
 EXPORT_SYMBOL(gps_dev);
+
+u8 hats_state = 0;
 
 #ifdef CONFIG_ANDROID_RAM_CONSOLE
 
@@ -169,44 +184,88 @@ struct yas_platform_data yas_data = {
 /* -------------------------------------------------------------------------
  * GP2A PROXIMITY SENSOR PLATFORM-SPECIFIC CODE AND DATA
  * ------------------------------------------------------------------------- */
-static int __init gp2a_setup(void);
+struct regulator *gp2a_vdd_reg;
+struct regulator *gp2a_vio_reg;
+static int __init gp2a_setup(struct device * dev);
+static int __init gp2a_teardown(void);
+static void gp2a_pwr(bool on);
 
 static struct gp2a_platform_data gp2a_plat_data __initdata = {
-	.ps_vout_gpio	= PS_INT_CODINA_R0_0,
-	.hw_setup	= gp2a_setup,
-	.alsout		= ADC_AUX2,
+	.ps_vout_gpio = PS_INT_GOLDEN_BRINGUP,
+	.alsout = ADC_AUX2,
+	.hw_setup = gp2a_setup,
+	.hw_teardown = gp2a_teardown,
+	.hw_pwr = gp2a_pwr,
 };
 
-static int __init gp2a_setup(void)
+static int __init gp2a_setup(struct device * dev)
 {
 	int err;
 
-	/* Configure the GPIO for the interrupt */
-	err = gpio_request(gp2a_plat_data.ps_vout_gpio, "PS_VOUT");
-	if (err < 0) {
-		pr_err("PS_VOUT: failed to request GPIO %d,"
-			" err %d\n", gp2a_plat_data.ps_vout_gpio, err);
+	pr_info("%s is called", __func__);
 
-		goto err1;
+	gp2a_vdd_reg = regulator_get(dev, "vdd_proxi");
+	if (IS_ERR(gp2a_vdd_reg))
+	{
+                pr_err("[%s] Failed to get vdd_proxi regulator for gp2a\n", __func__);
+		err = PTR_ERR(gp2a_vdd_reg);
+		goto err2;
 	}
 
-	err = gpio_direction_input(gp2a_plat_data.ps_vout_gpio);
-	if (err < 0) {
-		pr_err("PS_VOUT: failed to configure input"
-			" direction for GPIO %d, err %d\n",
-			gp2a_plat_data.ps_vout_gpio, err);
-
-		goto err2;
+	gp2a_vio_reg = regulator_get(dev, "vio_proxi");
+	if (IS_ERR(gp2a_vio_reg))
+	{
+		pr_err("[%s] Failed to get vio_proxi regulator for gp2a\n", __func__);
+		err = PTR_ERR(gp2a_vio_reg);
+		gp2a_vio_reg = NULL;
+		goto err3;
 	}
 
 	return 0;
 
+err3:
+	if (gp2a_vdd_reg)
+		regulator_put(gp2a_vdd_reg);
 err2:
 	gpio_free(gp2a_plat_data.ps_vout_gpio);
 err1:
 	return err;
 }
 
+static int __init gp2a_teardown(void)
+{
+	int ret = 0;
+
+	pr_info("%s, is called\n", __func__);
+	if (gp2a_vdd_reg) {
+		if (regulator_is_enabled(gp2a_vdd_reg))
+			regulator_disable((gp2a_vdd_reg));
+		regulator_put(gp2a_vdd_reg);
+	}
+	if (gp2a_vio_reg) {
+		if (regulator_is_enabled(gp2a_vio_reg))
+			regulator_disable((gp2a_vio_reg));
+		regulator_put(gp2a_vio_reg);
+	}
+	return ret;
+}
+
+static void gp2a_pwr(bool on)
+{
+	pr_info("%s, power : %d", __func__, on);
+	if (gp2a_vdd_reg) {
+		if (on)
+			regulator_enable(gp2a_vdd_reg);
+		else
+			regulator_disable(gp2a_vdd_reg);
+	}
+	if (gp2a_vio_reg) {
+		if (on)
+			regulator_enable(gp2a_vio_reg);
+		else
+			regulator_disable(gp2a_vio_reg);
+	}
+}
 #endif
 #if defined(CONFIG_PROXIMITY_TMD2672)
 
@@ -216,7 +275,7 @@ err1:
 static int __init tmd2672_setup(void);
 
 static struct tmd2672_platform_data tmd2672_plat_data __initdata = {
-	.ps_vout_gpio	= PS_INT_CODINA_R0_0,
+	.ps_vout_gpio	= PS_INT_SKOMER_BRINGUP,
 	.hw_setup	= tmd2672_setup,
 	.alsout		= ADC_AUX2,
 };
@@ -250,6 +309,64 @@ err2:
 err1:
 	return err;
 }
+
+#endif
+
+#if defined(CONFIG_PROXIMITY_PX3215)
+
+/* -------------------------------------------------------------------------
+ * TMD2672 PROXIMITY SENSOR PLATFORM-SPECIFIC CODE AND DATA
+ * ------------------------------------------------------------------------- */
+static int __init px3215_setup(void);
+
+static struct px3215_platform_data px3215_plat_data __initdata = {
+	.ps_vout_gpio	= PS_INT_SKOMER_BRINGUP,
+	.hw_setup	= px3215_setup,
+	.alsout		= ADC_AUX2,
+};
+
+static int __init px3215_setup(void)
+{
+	int err;
+
+	/* Configure the GPIO for the interrupt */
+	err = gpio_request(px3215_plat_data.ps_vout_gpio, "PS_VOUT");
+	if (err < 0) {
+		pr_err("PS_VOUT: failed to request GPIO %d,"
+			" err %d\n", px3215_plat_data.ps_vout_gpio, err);
+
+		goto err1;
+	}
+
+	err = gpio_direction_input(px3215_plat_data.ps_vout_gpio);
+	if (err < 0) {
+		pr_err("PS_VOUT: failed to configure input"
+			" direction for GPIO %d, err %d\n",
+			px3215_plat_data.ps_vout_gpio, err);
+
+		goto err2;
+	}
+
+	return 0;
+
+err2:
+	gpio_free(px3215_plat_data.ps_vout_gpio);
+err1:
+	return err;
+}
+
+#endif
+
+#ifdef CONFIG_SENSORS_STK3X1X
+static struct stk3x1x_platform_data stk3x1x_data={
+	.state_reg = 0x0, /* disable all */
+	.psctrl_reg = 0x31, /* ps_persistance=1, ps_gain=64X, PS_IT=0.391ms */
+	.ledctrl_reg = 0xBF, /* 50mA IRDR, 64/64 LED duty */
+	.wait_reg = 0x08, /* 50 ms */
+	.ps_thd_h = 180, //0x0200,  [HSS]
+	.ps_thd_l = 179, //0x01D0,
+	.int_pin = PS_INT_SKOMER_BRINGUP,
+};
 #endif
 
 #if defined(CONFIG_BATTERY_SAMSUNG)
@@ -383,7 +500,7 @@ void abb_dock_cb(bool attached)
 	pr_info("abb_dock_cb attached %d\n", attached);
 	set_cable_status = attached ? CABLE_TYPE_CARDOCK : CABLE_TYPE_NONE;
 }
-#endif
+#endif 
 
 #if defined(CONFIG_USB_SWITCHER)
 static struct usb_switch fsa880_data =	{
@@ -395,466 +512,385 @@ static struct usb_switch fsa880_data =	{
 		.connection_changed_interrupt_gpio	=	95	,
 		.charger_detect_gpio			=	0xffff 	, /*no charger detect gpio for this device*/
 		.valid_device_register_1_bits		=	0xEF	,
-		.valid_device_register_2_bits		=	0xFF	,
+		.valid_device_register_2_bits		=	0xFF	,	
 		.valid_registers			=	{0,1,1,1,1,0,0,1,0,0,1,1,0,0,0,0, 0, 0, 0, 1, 1  },
 };
 #endif
 
-#if defined(CONFIG_TOUCHSCREEN_ZINITIX_BT404)
-/* Configuration settings for Zinitix controller (BT404). 0x1D0 registers. */
-const struct bt404_ts_reg_data reg_data[] = {
-	/*{value, valid} */
-	{0, 0}, /* 00, RESERVED */
-	{0, 0}, /* 01, RESERVED */
-	{0, 0}, /* 02, RESERVED */
-	{0, 0}, /* 03, RESERVED */
-	{0, 0}, /* 04, RESERVED */
-	{0, 0}, /* 05, RESERVED */
-	{0, 0}, /* 06, RESERVED */
-	{0, 0}, /* 07, RESERVED */
-	{0, 0}, /* 08, RESERVED */
-	{0, 0}, /* 09, RESERVED */
-	{0, 0}, /* 0A, RESERVED */
-	{0, 0}, /* 0B, RESERVED */
-	{0, 0}, /* 0C, RESERVED */
-	{0, 0}, /* 0D, RESERVED */
-	{0, 0}, /* 0E, RESERVED */
-	{0, 0}, /* 0F, RESERVED */
-	{0, 1}, /* 10, TOUCH MODE */
-	{0x0E0E, 0}, /* 11, CHIP REVISION */
-	{0x0038, 0}, /* 12, FIRMWARE VERSION */
-	{0, 1}, /* 13, REGISTER DATA VERSION */
-	{0, 1}, /* 14, TSP TYPE */
-	{10, 1}, /* 15, SUPPORTED FINGER NUM */
-	{0, 0}, /* 16, RESERVED */
-	{0x002C, 0}, /* 17, INTERNAL FLAG */
-	{0xFFFA, 0}, /* 18, EEPROM INFO */
-	{0, 0}, /* 19, RESERVED */
-	{0, 0}, /* 1A, RESERVED */
-	{0, 0}, /* 1B, RESERVED */
-	{0, 0}, /* 1C, RESERVED */
-	{200, 0}, /* 1D, CURRENT SENSITIVITY TH */
-	{0, 0}, /* 1E, CURRENT CHARGER LIMIT CNT */
-	{4, 0}, /* 1F, CURRENT RAW VARIATION */
-	{200, 0}, /* 20, SENSITIVITY TH. */
-	{200, 0}, /* 21, Y0 SENSITIVITY TH */
-	{200, 0}, /* 22, LAST Y SENSITIVITY TH */
-	{200, 0}, /* 23, X0 SENSITIVITY TH */
-	{200, 0}, /* 24, LAST X SENSITIVITY TH */
-	{8, 0}, /* 25, ACTIVE SENSITIVITY COEF */
-	{5, 0}, /* 26, AUTO SENSITIVITY TH STEP */
-	{50, 0}, /* 27, AUTO SENSITIVITY TH VALUE PER STEP */
-	{5, 0}, /* 28, 1st BASELINE VARIATION */
-	{20, 0}, /* 29, 2nd BASELINE VARIATION */
-	{40, 0}, /* 2A, 1st BASELINE PERIOD */
-	{10, 0}, /* 2B, 2nd BASELINE PERIOD */
-	{1000, 0}, /* 2C, BASELINE FORCE PERIOD */
-	{20, 0}, /* 2D, 1st BASELINE VARIATION ON CHARGER */
-	{40, 0}, /* 2E, 2nd BASELINE VARIATION ON CHARGER */
-	{40, 0}, /* 2F, BASELINE UPDATE PERIOD ON CHARGER */
-	{2, 0}, /* 30, FIR COEFFICIENT */
-	{2, 0}, /* 31, HW_STYLUS MOVING FIR */
-	{2, 0}, /* 32, HW_FINGER MOVING FIR */
-	{2, 0}, /* 33, SW_FIR COEFFICIENT */
-	{2, 0}, /* 34, SW WIDTH FIR */
-	{15, 0}, /* 35, WIDTH(WEIGHT) COEF */
-	{0x1E05, 0}, /* 36, MVAVG_1_VELOCITY */
-	{258, 0}, /* 37, MVAVG_1_SW_INC */
-	{0, 0}, /* 38, RESERVED */
-	{0, 0}, /* 39, RESERVED */
-	{0, 0}, /* 3A, RESERVED */
-	{2, 0}, /* 3B, REACTION COUNT */
-	{160, 0}, /* 3C, PALM REJECT TRESHHOLD */
-	{160, 0}, /* 3D, NOISE REJECT TRESHHOLD */
-	{0x0203, 0}, /* 3E, NOISE REJECT HILO RATIO */
-	{80, 0}, /* 3F, NOISE PALM LEVEL */
-	{10, 0}, /* 40, NOISE PALM UP SKIP COUNT */
-	{5, 0}, /* 41, SKIP REJECT COUNT AFTER DETECT */
-	{0x0103, 0}, /* 42, CUTOFF NOISE PDATA RATIO */
-	{0x0103, 0}, /* 43, CUTOFF NOISE WIDTH RATIO */
-	{128, 0}, /* 44, REACTION THRESHHOLD */
-	{0x0104, 0}, /* 45, CHECK NOISE PATTERN P */
-	{3, 0}, /* 46, CHECK NOISE PATTERN P CENTER CNT */
-	{2, 0}, /* 47, CHECK NOISE PATTERN P EDGE CNT */
-	{1, 0}, /* 48, CHECK NOISE PATTERN P CORNER CNT */
-	{0x010A, 0}, /* 49, CHECK NOISE PATTERN N */
-	{2, 0}, /* 4A, CHECK NOISE PATTERN N CNT */
-	{80, 0}, /* 4B, CHECK NOISE STYLUS RAW LIMIT VALUE */
-	{0x0203, 0}, /* 4C, CHECK NOISE STYLUS PATTERN P */
-	{4, 0}, /* 4D, CHECK NOISE STYLUS PATTERN P CNT */
-	{0x0203, 0}, /* 4E, CHECK NOISE STYLUS PATTERN N */
-	{2, 0}, /* 4F, CHECK NOISE STYLUS PATTERN N CNT */
-	{0, 0}, /* 50, AUTO CHARGING DETECT USE */
-	{0, 0}, /* 51, CHARGING MODE */
-	{15, 0}, /* 52, CHARGING STEP LIMIT */
-	{1000, 0}, /* 53, CHARGING MODE SENSITIVITY TH */
-	{20, 0}, /* 54, AUTO CHARGING OUT VARIATION */
-	{200, 0}, /* 55, AUTO CHARGING IN VARIATION */
-	{0x0103, 0}, /* 56, AUTO CHARING STRENGTH RATIO */
-	{80, 0}, /* 57, AUTO CHARING LIMIT VALUE */
-	{10, 0}, /* 58, AUTO CHARING LIMIT CNT */
-	{10, 0}, /* 59, AUTO CHARGING SKIP CNT */
-	{0, 0}, /* 5A, AUTO CHARGING REJECT HILO RATIO */
-	{80, 0}, /* 5B, AUTO CHARGING REJECT PALM CNT */
-	{10, 0}, /* 5C, AUTO CHARGING REACTION COUNT */
-	{0, 0}, /* 5D, RESERVED */
-	{0, 0}, /* 5E, RESERVED */
-	{0, 0}, /* 5F, RESERVED */
-	{20, 0}, /* 60, TOTAL NUM OF X */
-	{16, 0}, /* 61, TOTAL NUM OF Y */
-	{0x0B0A, 0}, /* 62, X00_01_DRIVE_NUM */
-	{0x0D0C, 0}, /* 63, X02_03_DRIVE_NUM */
-	{0x0F0E, 0}, /* 64, X04_05_DRIVE_NUM */
-	{0x1110, 0}, /* 65, X06_07_DRIVE_NUM */
-	{0x1312, 0}, /* 66, X08_09_DRIVE_NUM */
-	{0x0100, 0}, /* 67, X10_11_DRIVE_NUM */
-	{0x0302, 0}, /* 68, X12_13_DRIVE_NUM */
-	{0x0504, 0}, /* 69, X14_15_DRIVE_NUM */
-	{0x0706, 0}, /* 6A, X16_17_DRIVE_NUM */
-	{0x0908, 0}, /* 6B, X18_19_DRIVE_NUM */
-	{0x1514, 0}, /* 6C, X20_21_DRIVE_NUM */
-	{0x1716, 0}, /* 6D, X22_23_DRIVE_NUM */
-	{0x1918, 0}, /* 6E, X24_25_DRIVE_NUM */
-	{0x1B1A, 0}, /* 6F, X26_27_DRIVE_NUM */
-	{0x1D1C, 0}, /* 70, X28_29_DRIVE_NUM */
-	{0x1F1E, 0}, /* 71, X30_31_DRIVE_NUM */
-	{0x2120, 0}, /* 72, X32_33_DRIVE_NUM */
-	{0x2322, 0}, /* 73, X34_35_DRIVE_NUM */
-	{0x2524, 0}, /* 74, X36_37_DRIVE_NUM */
-	{0x2726, 0}, /* 75, X38_39_DRIVE_NUM */
-	{1700, 0}, /* 76, CALIBRATION REFERENCE */
-	{1, 0}, /* 77, CALIBRATION C MODE */
-	{15, 0}, /* 78, CALIBRATION DEFAULT N COUNT */
-	{15, 0}, /* 79, CALIBRATION DEFAULT C */
-	{32, 0}, /* 7A, CALIBRATION ACCURACY */
-	{20, 0}, /* 7B, SOFT CALIBRATION INIT COUNT */
-	{0, 0}, /* 7C, RESERVED */
-	{0, 0}, /* 7D, RESERVED */
-	{0, 0}, /* 7E, RESERVED */
-	{0, 0}, /* 7F, RESERVED */
-	{0, 0}, /* 80, RESERVED */
-	{0, 0}, /* 81, RESERVED */
-	{0, 0}, /* 82, RESERVED */
-	{0, 0}, /* 83, RESERVED */
-	{0, 0}, /* 84, RESERVED */
-	{0, 0}, /* 85, RESERVED */
-	{0, 0}, /* 86, RESERVED */
-	{0, 0}, /* 87, RESERVED */
-	{0, 0}, /* 88, RESERVED */
-	{0, 0}, /* 89, RESERVED */
-	{0, 0}, /* 8A, RESERVED */
-	{0, 0}, /* 8B, RESERVED */
-	{0, 0}, /* 8C, RESERVED */
-	{0, 0}, /* 8D, RESERVED */
-	{0, 0}, /* 8E, RESERVED */
-	{0, 0}, /* 8F, RESERVED */
-	{0, 0}, /* 90, RESERVED */
-	{0, 0}, /* 91, RESERVED */
-	{0, 0}, /* 92, RESERVED */
-	{0, 0}, /* 93, RESERVED */
-	{0, 0}, /* 94, RESERVED */
-	{0, 0}, /* 95, RESERVED */
-	{0, 0}, /* 96, RESERVED */
-	{0, 0}, /* 97, RESERVED */
-	{0, 0}, /* 98, RESERVED */
-	{0, 0}, /* 99, RESERVED */
-	{0, 0}, /* 9A, RESERVED */
-	{0, 0}, /* 9B, RESERVED */
-	{0, 0}, /* 9C, RESERVED */
-	{0, 0}, /* 9D, RESERVED */
-	{0, 0}, /* 9E, RESERVED */
-	{0, 0}, /* 9F, RESERVED */
-	{0, 0}, /* A0, RESERVED */
-	{0, 0}, /* A1, RESERVED */
-	{0, 0}, /* A2, RESERVED */
-	{0, 0}, /* A3, RESERVED */
-	{0, 0}, /* A4, RESERVED */
-	{0, 0}, /* A5, RESERVED */
-	{0, 0}, /* A6, RESERVED */
-	{0, 0}, /* A7, RESERVED */
-	{0, 0}, /* A8, RESERVED */
-	{0, 0}, /* A9, RESERVED */
-	{0, 0}, /* AA, RESERVED */
-	{0, 0}, /* AB, RESERVED */
-	{0, 0}, /* AC, RESERVED */
-	{0, 0}, /* AD, RESERVED */
-	{0, 0}, /* AE, RESERVED */
-	{0, 0}, /* AF, RESERVED */
-	{2, 1}, /* B0, SUPPORTED BUTTON NUM */
-	{0, 1}, /* B1, BUTTON REACTION CNT */
-	{200, 1}, /* B2, BUTTON SENSITIVITY TH */
-	{1, 1}, /* B3, BUTTON LINE TYPE */
-	{790, 1}, /* B4, BUTTON LINE NUM */
-	{10, 1}, /* B5, BUTTON RANGE */
-	{70, 1}, /* B6, BUTTON_0 START NODE */
-	{400, 1}, /* B7, BUTTON_1 START NODE */
-	{0, 1}, /* B8, BUTTON_2 START NODE */
-	{0, 1}, /* B9, BUTTON_3 START NODE */
-	{0, 1}, /* BA, BUTTON_4 START NODE */
-	{0, 1}, /* BB, BUTTON_5 START NODE */
-	{0, 1}, /* BC, BUTTON_6 START NODE */
-	{0, 1}, /* BD, BUTTON_7 START NODE */
-	{0, 0}, /* BE, RESERVED */
-	{0, 0}, /* BF, RESERVED */
-	{2560, 0}, /* C0, RESOLUTION OF X */
-	{2048, 0}, /* C1, RESOLUTION OF Y */
-	{0x0001, 0}, /* C2, COORD ORIENTATION */
-	{8, 0}, /* C3, HOLD POINT THRESHOLD */
-	{4, 0}, /* C4, HOLD WIDTH THRESHOLD */
-	{1000, 0}, /* C5, STYLUS HW THRESHHOLD */
-	{10000, 0}, /* C6, ASSUME UP THRESHHOLD */
-	{64, 0}, /* C7, ASSUME UP SKIP THRESHHOLD */
-	{0, 0}, /* C8, X POINT SHIFT */
-	{0, 0}, /* C9, Y POINT SHIFT */
-	{0, 0}, /* CA, VIEW XF OFFSET */
-	{0, 0}, /* CB, VIEW XL OFFSET */
-	{0, 0}, /* CC, VIEW YF OFFSET */
-	{0, 0}, /* CD, VIEW YL OFFSET */
-	{0, 0}, /* CE, RESERVED */
-	{0, 0}, /* CF, RESERVED */
-	{69, 0}, /* D0, FINGER COEF X GAIN */
-	{1000, 0}, /* D1, FINGER ATTACH VALUE */
-	{400, 0}, /* D2, STYLUS ATTACH VALUE */
-	{0, 0}, /* D3, RESERVED */
-	{0, 0}, /* D4, RESERVED */
-	{0x0005, 0}, /* D5, PDATA COEF1 */
-	{0x0003, 0}, /* D6, PDATA COEF2 */
-	{0x0003, 0}, /* D7, PDATA COEF3 */
-	{0, 0}, /* D8, RESERVED */
-	{0, 0}, /* D9, RESERVED */
-	{10, 0}, /* DA, EDGE COEFFICIENT */
-	{100, 0}, /* DB, OPT Q RESOLUTION */
-	{0x7777, 0}, /* DC, PDATA EDGE COEF1 */
-	{0x4444, 0}, /* DD, PDATA EDGE COEF2 */
-	{0x3333, 0}, /* DE, PDATA EDGE COEF3 */
-	{160, 0}, /* DF, EDGE Q BIAS1_1 */
-	{160, 0}, /* E0, EDGE Q BIAS2_1 */
-	{165, 0}, /* E1, EDGE Q BIAS3_1 */
-	{165, 0}, /* E2, EDGE Q BIAS4_1 */
-	{0, 0}, /* E3, RESERVED */
-	{0, 0}, /* E4, RESERVED */
-	{0x8888, 0}, /* E5, PDATA CORNER COEF1 */
-	{0x3333, 0}, /* E6, PDATA CORNER COEF2 */
-	{0x3333, 0}, /* E7, PDATA CORNER COEF3 */
-	{130, 0}, /* E8, CORNER Q BIAS1_1 */
-	{130, 0}, /* E9, CORNER Q BIAS2_1 */
-	{130, 0}, /* EA, CORNER Q BIAS3_1 */
-	{130, 0}, /* EB, CORNER Q BIAS4_1 */
-	{0, 0}, /* EC, RESERVED */
-	{0, 0}, /* ED, RESERVED */
-	{0, 0}, /* EE, RESERVED */
-	{0, 0}, /* EF, RESERVED */
-	{0x080F, 0}, /* F0, INT ENABLE FLAG */
-	{0, 0}, /* F1, PERIODICAL INTERRUPT INTERVAL */
-	{0, 0}, /* F2, RESERVED */
-	{0, 0}, /* F3, RESERVED */
-	{0, 0}, /* F4, RESERVED */
-	{0, 0}, /* F5, RESERVED */
-	{0, 0}, /* F6, RESERVED */
-	{0, 0}, /* F7, RESERVED */
-	{0, 0}, /* F8, RESERVED */
-	{0, 0}, /* F9, RESERVED */
-	{0, 0}, /* FA, RESERVED */
-	{0, 0}, /* FB, RESERVED */
-	{0, 0}, /* FC, RESERVED */
-	{0, 0}, /* FD, RESERVED */
-	{0, 0}, /* FE, RESERVED */
-	{0, 0}, /* FF, RESERVED */
-	{40, 0}, /* 100, AFE FREQUENCY */
-	{0x2828, 0}, /* 101, FREQ X NUM 0_1 */
-	{0x2828, 0}, /* 102, FREQ X NUM 2_3 */
-	{0x2828, 0}, /* 103, FREQ X NUM 4_5 */
-	{0x2828, 0}, /* 104, FREQ X NUM 6_7 */
-	{0x2828, 0}, /* 105, FREQ X NUM 8_9 */
-	{0x2828, 0}, /* 106, FREQ X NUM 10_11 */
-	{0x2828, 0}, /* 107, FREQ X NUM 12_13 */
-	{0x2828, 0}, /* 108, FREQ X NUM 14_15 */
-	{0x2828, 0}, /* 109, FREQ X NUM 16_17 */
-	{0x2828, 0}, /* 10A, FREQ X NUM 18_19 */
-	{0x2828, 0}, /* 10B, FREQ X NUM 20_21 */
-	{0x2828, 0}, /* 10C, FREQ X NUM 22_23 */
-	{0x2828, 0}, /* 10D, FREQ X NUM 24_25 */
-	{0x2828, 0}, /* 10E, FREQ X NUM 26_27 */
-	{0x2828, 0}, /* 10F, FREQ X NUM 28_29 */
-	{0x2828, 0}, /* 110, FREQ X NUM 30_31 */
-	{0x2828, 0}, /* 111, FREQ X NUM 32_33 */
-	{0x2828, 0}, /* 112, FREQ X NUM 34_35 */
-	{0x2828, 0}, /* 113, FREQ X NUM 36_37 */
-	{0x2828, 0}, /* 114, FREQ X NUM 38_39 */
-	{0, 0}, /* 115, RESERVED */
-	{0, 0}, /* 116, RESERVED */
-	{0, 0}, /* 117, RESERVED */
-	{0, 0}, /* 118, RESERVED */
-	{0, 0}, /* 119, RESERVED */
-	{0, 0}, /* 11A, RESERVED */
-	{0, 0}, /* 11B, RESERVED */
-	{0, 0}, /* 11C, RESERVED */
-	{0, 0}, /* 11D, RESERVED */
-	{0, 0}, /* 11E, RESERVED */
-	{0, 0}, /* 11F, RESERVED */
-	{0, 0}, /* 120, AFE MODE */
-	{0, 0}, /* 121, AFE C MODE */
-	{10, 0}, /* 122, AFE DEFAULT N COUNT */
-	{63, 0}, /* 123, AFE DEFAULT C */
-	{0x0000, 0}, /* 124, ONE NODE SCAN DELAY */
-	{0x0000, 0}, /* 125, CUR ONE NODE SCAN DELAY */
-	{0x0000, 0}, /* 126, ALL NODE SCAN DELAY LSB */
-	{0x0000, 0}, /* 127, ALL NODE SCAN DELAY MSB */
-	{0x0000, 0}, /* 128, CUR ALL NODE SCAN DELAY LSB */
-	{0x0000, 0}, /* 129, CUR ALL NODE SCAN DELAYMSB */
-	{0, 0}, /* 12A, AFE SCAN NOISE C */
-	{2, 0}, /* 12B, AFE R SHIFT VALUE */
-	{0, 0}, /* 12C, AFE SCAN MODE */
-	{0, 0}, /* 12D, RESERVED */
-	{0, 0}, /* 12E, RESERVED */
-	{0, 0}, /* 12F, RESERVED */
-	{0x3333, 0}, /* 130, REG_AFE_X_VAL */
-	{0xFFFF, 0}, /* 131, REG_AFE_XA_EN */
-	{0xFFFF, 0}, /* 132, REG_AFE_XB_EN */
-	{0x3305, 0}, /* 133, REG_AFE_X_NOVL */
-	{0x0011, 0}, /* 134, REG_AFE_Y_NOVL */
-	{0x0133, 0}, /* 135, REG_AFE_Y_VAL */
-	{0x0001, 0}, /* 136, REG_RBG_EN */
-	{0x00FF, 0}, /* 137, REG_INTAMP_EN */
-	{0x0011, 0}, /* 138, REG_INTAMP_VREF_EN */
-	{0x2000, 0}, /* 139, REG_INTAMP_VREF_NSEL_N */
-	{0x0002, 0}, /* 13A, REG_INTAMP_VREF_CTRL */
-	{0x007F, 0}, /* 13B, REG_INTAMP_TIME0 */
-	{0x00FF, 0}, /* 13C, REG_INTAMP_TIME1 */
-	{0x3F0F, 0}, /* 13D, REG_SAR_SAMPLE_TIME */
-	{0x0001, 0}, /* 13E, REG_SAR_CTRL */
-	{0x0000, 0}, /* 13F, REG_SAR_BUF_EN */
-	{0x0000, 0}, /* 140, REG_ATEST_CTRL */
-	{0x0000, 0}, /* 141, REG_ATEST_SEL0 */
-	{0x0000, 0}, /* 142, REG_ATEST_SEL1 */
-	{0x0004, 0}, /* 143, REG_MULTI_FRAME */
-	{0, 0}, /* 144 - 1CF, RESERVED */
+
+static struct pn547_i2c_platform_data rx71_nfc_data = {
+	.irq_gpio = NFC_IRQ_SKOMER_BRINGUP,
+	.ven_gpio = NFC_EN_SKOMER_BRINGUP,
+	.firm_gpio = NFC_FIRM_SKOMER_BRINGUP,
 };
 
-struct i2c_client *bt404_i2c_client = NULL;
-
-void put_isp_i2c_client(struct i2c_client *client)
+#ifdef CONFIG_TOUCHSCREEN_TMA140
+struct tma_platform_data {
+	u8 exit_flag;
+};
+static struct tma_platform_data tma_pdata = {
+	.exit_flag = 0,
+};
+static void __init tma_init(void)
 {
-	bt404_i2c_client = client;
+	tma_pdata.exit_flag = hats_state;	
+}
+#endif
+
+#ifdef CONFIG_KEYBOARD_NTS_TOUCHKEY
+int nts_touchkey_keycodes[] = {KEY_MENU, KEY_BACK};
+
+static void nts_touchkey_power(bool on)
+{
+	static struct regulator *toutchkey_reg_2v2;
+
+	if (!toutchkey_reg_2v2) {
+		printk(KERN_ERR "%s: 2.2v touchkey regulator is NULL\n",
+			"nts_touchkey");
+
+		toutchkey_reg_2v2 = regulator_get(NULL, "v-touchkey");
+		if (IS_ERR(toutchkey_reg_2v2)) {
+			printk(KERN_ERR "%s: fail to get regulator v2.2 (%d)\n",
+			       "nts_touchkey", (int)PTR_ERR(toutchkey_reg_2v2));
+			goto err_get_reg;
+		}
+		regulator_set_voltage(toutchkey_reg_2v2, 2200000, 2200000);
+	}
+
+	if (on) {
+		regulator_enable(toutchkey_reg_2v2);
+		mdelay(100);
+	} else {
+		regulator_disable(toutchkey_reg_2v2);
+	}
+
+	printk(KERN_INFO "%s is finished.(%s)\n",
+						__func__, (on) ? "on" : "off");
+
+	return;
+
+
+err_get_reg:
+	return;
 }
 
-struct i2c_client *get_isp_i2c_client(void)
-{
-	return bt404_i2c_client;
-}
-
-static void bt404_ts_int_set_pull(bool to_up)
+static void nts_touchkey_int_set_pull(bool to_up)
 {
 	int ret;
 	int pull = (to_up) ? NMK_GPIO_PULL_UP : NMK_GPIO_PULL_DOWN;
 
-	ret = nmk_gpio_set_pull(TSP_INT_CODINA_R0_0, pull);
+	ret = nmk_gpio_set_pull(TOUCHKEY_INT_SKOMER_BRINGUP, pull);
 	if (ret < 0)
-		printk(KERN_ERR "%s: fail to set pull xx on interrupt pin\n",
-								__func__);
+		printk(KERN_ERR "%s: fail to set pull-%s on interrupt pin\n",
+			__func__, (pull == NMK_GPIO_PULL_UP) ? "up" : "down");
 }
 
-static int bt404_ts_pin_configure(bool to_gpios)
-{
-	if (to_gpios) {
-		nmk_gpio_set_mode(TSP_SCL_CODINA_R0_0, NMK_GPIO_ALT_GPIO);
-		gpio_direction_output(TSP_SCL_CODINA_R0_0, 0);
-
-		nmk_gpio_set_mode(TSP_SDA_CODINA_R0_0, NMK_GPIO_ALT_GPIO);
-		gpio_direction_output(TSP_SDA_CODINA_R0_0, 0);
-
-	} else {
-		gpio_direction_output(TSP_SCL_CODINA_R0_0, 1);
-		nmk_gpio_set_mode(TSP_SCL_CODINA_R0_0, NMK_GPIO_ALT_C);
-
-		gpio_direction_output(TSP_SDA_CODINA_R0_0, 1);
-		nmk_gpio_set_mode(TSP_SDA_CODINA_R0_0, NMK_GPIO_ALT_C);
-	}
-	return 0;
-}
-
-static struct bt404_ts_platform_data bt404_ts_pdata = {
-	.gpio_int		= TSP_INT_CODINA_R0_0,
-	.gpio_scl		= TSP_SCL_CODINA_R0_0,
-	.gpio_sda		= TSP_SDA_CODINA_R0_0,
-	.gpio_ldo_en		= TSP_LDO_ON1_CODINA_R0_0,
-	.gpio_reset		= -1,
-	.orientation		= 0,
-	.x_max			= 480,
-	.y_max			= 800,
-	.num_buttons		= 2,
-	.button_map		= {KEY_MENU, KEY_BACK,},
-	.num_regs		= ARRAY_SIZE(reg_data),
-	.reg_data		= reg_data,
-	.put_isp_i2c_client	= put_isp_i2c_client,
-	.get_isp_i2c_client	= get_isp_i2c_client,
-	.int_set_pull		= bt404_ts_int_set_pull,
-	.pin_configure		= bt404_ts_pin_configure,
+struct nts_touchkey_platform_data nts_touchkey_pdata = {
+	.gpio_test = TOUCHKEY_TEST_SKOMER_BRINGUP,
+	.gpio_reset = TOUCHKEY_RESET_SKOMER_BRINGUP,
+	.gpio_scl = TOUCHKEY_SCL_SKOMER_BRINGUP,
+	.gpio_sda = TOUCHKEY_SDA_SKOMER_BRINGUP,
+	.gpio_int = TOUCHKEY_INT_SKOMER_BRINGUP,
+	.gpio_en = TOUCHKEY_EN_SKOMER_BRINGUP,
+	.num_key = ARRAY_SIZE(nts_touchkey_keycodes),
+	.keycodes = nts_touchkey_keycodes,
+	.power = nts_touchkey_power,
+	.int_set_pull = nts_touchkey_int_set_pull,
 };
 
-static int __init bt404_ts_init(void)
+static int nts_touchkey_init(void)
+{
+	int ret;
+	unsigned pin;
+
+	if (system_rev < SKOMER_R0_2) {
+		nts_touchkey_pdata.enable = 1;
+	} else {
+		nts_touchkey_pdata.enable = 0;
+		return 0;
+	}
+
+	pin = TOUCHKEY_TEST_SKOMER_BRINGUP;
+	ret = gpio_request(pin, "touchkey-test");
+	if (ret < 0) {
+		printk(KERN_ERR "%s: fail to request_gpio of %d (%d).\n",
+			"nts_touchkey", pin, ret);
+		goto err_request_test;
+	}
+	gpio_direction_output(pin, 0);
+
+	pin = TOUCHKEY_RESET_SKOMER_BRINGUP;
+	ret = gpio_request(pin, "touchkey-reset");
+	if (ret < 0) {
+		printk(KERN_ERR "%s: fail to request_gpio of %d (%d).\n",
+			"nts_touchkey", pin, ret);
+		goto err_request_reset;
+	}
+	gpio_direction_output(pin, 1);
+
+	pin = TOUCHKEY_INT_SKOMER_BRINGUP;
+	ret = gpio_request(pin, "touchkey-int");
+	if (ret < 0) {
+		printk(KERN_ERR "%s: fail to request_gpio of %d (%d).\n",
+			"nts_touchkey", pin, ret);
+		goto err_request_int;
+	}
+	gpio_direction_input(pin);
+
+	pin = TOUCHKEY_EN_SKOMER_BRINGUP;
+	ret = gpio_request(pin, "touchkey-en");
+	if (ret < 0) {
+		printk(KERN_ERR "%s: fail to request_gpio of %d (%d).\n",
+			"nts_touchkey", pin, ret);
+		goto err_request_en;
+	}
+	gpio_direction_output(pin, 0);
+
+	return 0;
+
+err_request_en:
+	gpio_free(TOUCHKEY_INT_SKOMER_BRINGUP);
+err_request_int:
+	gpio_free(TOUCHKEY_RESET_SKOMER_BRINGUP);
+err_request_reset:
+	gpio_free(TOUCHKEY_TEST_SKOMER_BRINGUP);
+err_request_test:
+	return ret;
+}
+
+#endif
+
+#ifdef CONFIG_KEYBOARD_TC360_TOUCHKEY
+
+int tc360_keycodes[] = {KEY_MENU, KEY_BACK};
+
+static struct regulator *tc360_vdd_regulator = NULL;
+static struct regulator *tc360_vled_regulator = NULL;
+
+static int tc360_setup_power(struct device *dev, bool setup)
+{
+	int min_uV, max_uV;
+	int ret;
+
+	if (setup) {
+		min_uV = max_uV = 2200000;
+		tc360_vdd_regulator = regulator_get(dev, "v-touchkey");
+
+		if (IS_ERR(tc360_vdd_regulator)) {
+			ret = PTR_ERR(tc360_vdd_regulator);
+			printk(KERN_ERR "%s: fail to get tc360_regulator_vdd "
+			       "(%d)\n", __func__, ret);
+			return ret;
+		}
+
+		ret = regulator_set_voltage(tc360_vdd_regulator, min_uV,
+					    max_uV);
+		if (ret < 0) {
+			printk(KERN_ERR "%s: fail to set tc360_regulator_vdd to"
+			       " %d, %d (%d)\n", __func__, min_uV, max_uV,
+			       ret);
+			goto err_set_vdd_voltage;
+		}
+		printk(KERN_INFO "%s: set vdd to %d uV - %d uV (%d)\n",
+		       __func__, min_uV, max_uV, ret);
+
+		min_uV = max_uV = 3300000;
+		tc360_vled_regulator = regulator_get(dev, "v_led_3v3");
+		if (IS_ERR(tc360_vled_regulator)) {
+			ret = PTR_ERR(tc360_vled_regulator);
+			printk(KERN_ERR "%s: fail to get tc360_vled_regulator "
+			       "(%d)\n", __func__, ret);
+			goto err_get_vled_regulator;
+		}
+		ret = regulator_set_voltage(tc360_vled_regulator, min_uV,
+					    max_uV);
+		if (ret < 0) {
+			printk(KERN_ERR "%s: fail to set tc360_vled_regulator "
+			       "to %d, %d (%d)\n", __func__, min_uV,
+			       max_uV, ret);
+			goto err_set_vled_voltage;
+		}
+		printk(KERN_INFO "%s: set vled to %d uV - %d uV (%d)\n",
+		       __func__, min_uV, max_uV, ret);
+	} else {
+		regulator_force_disable(tc360_vdd_regulator);
+		regulator_put(tc360_vdd_regulator);
+
+		regulator_force_disable(tc360_vled_regulator);
+		regulator_put(tc360_vled_regulator);
+	}
+
+	return 0;
+
+err_set_vled_voltage:
+	regulator_put(tc360_vled_regulator);
+err_get_vled_regulator:
+err_set_vdd_voltage:
+	regulator_put(tc360_vdd_regulator);
+
+	return ret;
+}
+
+static void tc360_power(bool on)
 {
 	int ret;
 
-	if (system_rev < CODINA_TMO_R0_0_A) {
-		ret = gpio_request(TSP_LDO_ON1_CODINA_R0_0, "bt404_ldo_en");
-		if (ret < 0) {
-				printk(KERN_ERR
-					"bt404: could not obtain gpio for ldo pin\n");
-			return -1;
-		}
-		gpio_direction_output(TSP_LDO_ON1_CODINA_R0_0, 0);
-		
-		bt404_ts_pdata.power_con = LDO_CON;
+	if (!tc360_vdd_regulator) {
+		printk(KERN_ERR "%s: No regulator.\n", __func__);
+		return;
+	}
+
+	if (on)
+		ret = regulator_enable(tc360_vdd_regulator);
+	else
+		ret = regulator_disable(tc360_vdd_regulator);
+
+	printk(KERN_INFO "%s: %s (%d)\n", __func__, (on) ? "on" : "off", ret);
+}
+
+static void tc360_led_power(bool on)
+{
+	int ret;
+
+	if (!tc360_vled_regulator) {
+		printk(KERN_ERR "%s: No regulator.\n", __func__);
+		return;
+	}
+
+	if (on)
+		ret = regulator_enable(tc360_vled_regulator);
+	else
+		ret = regulator_disable(tc360_vled_regulator);
+
+	printk(KERN_INFO "%s: %s (%d)\n", __func__, (on) ? "on" : "off", ret);
+}
+
+static void tc360_pin_configure(bool to_gpios)
+{
+	/* the below routine is commented out.
+	 * because the 'skomer' use s/w i2c for tc360 touchkey.
+	 */
+	if (to_gpios) {
+		/*
+		nmk_gpio_set_mode(TOUCHKEY_SCL_SKOMER_BRINGUP,
+					NMK_GPIO_ALT_GPIO);
+		*/
+		gpio_direction_output(TOUCHKEY_SCL_SKOMER_BRINGUP, 1);
+		/*
+		nmk_gpio_set_mode(TOUCHKEY_SDA_SKOMER_BRINGUP,
+					NMK_GPIO_ALT_GPIO);
+		*/
+		gpio_direction_output(TOUCHKEY_SDA_SKOMER_BRINGUP, 1);
+
+
 	} else {
-		bt404_ts_pdata.power_con = PMIC_CON;	
+
+		gpio_direction_output(TOUCHKEY_SCL_SKOMER_BRINGUP, 1);
+		/*
+		nmk_gpio_set_mode(TOUCHKEY_SCL_SKOMER_BRINGUP, NMK_GPIO_ALT_C);
+		*/
+		gpio_direction_output(TOUCHKEY_SDA_SKOMER_BRINGUP, 1);
+		/*
+		nmk_gpio_set_mode(TOUCHKEY_SDA_SKOMER_BRINGUP, NMK_GPIO_ALT_C);
+		*/
 	}
 
-	ret = gpio_request(TSP_INT_CODINA_R0_0, "bt404_int");
+}
+
+static void tc360_int_set_pull(bool to_up)
+{
+	int ret;
+	int pull = (to_up) ? NMK_GPIO_PULL_UP : NMK_GPIO_PULL_DOWN;
+
+	ret = nmk_gpio_set_pull(TOUCHKEY_INT_SKOMER_BRINGUP, pull);
+	if (ret < 0)
+		printk(KERN_ERR "%s: fail to set pull-%s on interrupt pin\n",
+		       __func__,
+		       (pull == NMK_GPIO_PULL_UP) ? "up" : "down");
+}
+
+struct tc360_platform_data tc360_pdata = {
+	.gpio_scl = TOUCHKEY_SCL_SKOMER_BRINGUP,
+	.gpio_sda = TOUCHKEY_SDA_SKOMER_BRINGUP,
+	.gpio_int = TOUCHKEY_INT_SKOMER_BRINGUP,
+	.gpio_en = TOUCHKEY_EN_SKOMER_BRINGUP,
+	.udelay = 6,
+	.num_key = ARRAY_SIZE(tc360_keycodes),
+	.keycodes = tc360_keycodes,
+	.suspend_type = TC360_SUSPEND_WITH_POWER_OFF,
+	.setup_power = tc360_setup_power,
+	.power = tc360_power,
+	.led_power = tc360_led_power,
+	.pin_configure = tc360_pin_configure,
+	.int_set_pull = tc360_int_set_pull,
+	.touchscreen_is_pressed = &touchscreen_is_pressed,
+};
+
+static int tc360_init(void)
+{
+	int ret;
+	unsigned pin;
+
+	if (system_rev >= SKOMER_R0_2) {
+		tc360_pdata.enable = 1;
+	} else {
+		tc360_pdata.enable = 0;
+		return 0;
+	}
+
+	pin = TOUCHKEY_INT_SKOMER_BRINGUP;
+	ret = gpio_request(pin, "touchkey-int");
 	if (ret < 0) {
-		printk(KERN_ERR "bt404: could not obtain gpio for int\n");
-		return -1;
+		printk(KERN_ERR "%s: fail to request_gpio of %d (%d).\n",
+			__func__, pin, ret);
+		return ret;
 	}
-	gpio_direction_input(TSP_INT_CODINA_R0_0);
-
-	bt404_ts_pdata.panel_type = (system_rev <= CODINA_TMO_R0_4) ?
-						GFF_PANEL : EX_CLEAR_PANEL;
-
-	printk(KERN_INFO "bt404: initialize pins\n");
+	gpio_direction_input(pin);
 
 	return 0;
 }
 #endif
 
-
-static struct i2c_board_info __initdata codina_r0_0_i2c0_devices[] = {
-#if defined(CONFIG_PROXIMITY_GP2A)
-	{
-		/* GP2A proximity sensor */
-		I2C_BOARD_INFO(GP2A_I2C_DEVICE_NAME, 0x44),
-		.platform_data = &gp2a_plat_data,
-	},
-#endif
-#if defined(CONFIG_PROXIMITY_TMD2672)
-	{
-		/* TMD2672 proximity sensor */
-		I2C_BOARD_INFO(TMD2672_I2C_DEVICE_NAME, 0x39),
-		.platform_data = &tmd2672_plat_data,
-	},
-#endif
+#ifdef CONFIG_BMA254_SMART_ALERT
+struct bma254_platform_data {
+	int p_out;  /* acc-sensor-irq gpio */
+	int (*power)(bool); /* power to the chip */
 };
 
-static struct i2c_board_info __initdata codina_r0_0_i2c1_devices[] = {
+static struct bma254_platform_data bma254_pdata = {
+	.p_out = SENSORS_INT_SKOMER_BRINGUP,
+	};
+#endif
+static struct i2c_board_info __initdata skomer_bringup_i2c0_devices[] = {
+#if defined(CONFIG_PROXIMITY_PX3215)
+	{
+		/* TMD2672 proximity sensor */
+		I2C_BOARD_INFO("dyna", 0x1e),
+		/*.irq = GPIO_TO_IRQ(PS_INT_SKOMER_BRINGUP),*/
+		.platform_data = &px3215_plat_data,
+	},
+#endif
+#ifdef CONFIG_SENSORS_STK3X1X
+	{
+		I2C_BOARD_INFO("stk_ps", 0x90 >>1),
+		.platform_data = &stk3x1x_data,
+	//	.irq = GPIO_TO_IRQ(PS_INT_SKOMER_BRINGUP),
+	},
+#endif
+
+};
+
+static struct i2c_board_info __initdata skomer_bringup_i2c1_devices[] = {
 #if defined(CONFIG_USB_SWITCHER)
 	{
 		I2C_BOARD_INFO("musb", 0x25),
 		.platform_data = &fsa880_data ,
-		.irq = GPIO_TO_IRQ(JACK_NINT_CODINA_R0_0),
+		.irq = GPIO_TO_IRQ(JACK_NINT_SKOMER_BRINGUP),
 	},
 #endif
 };
 
-static struct i2c_board_info __initdata codina_r0_0_i2c2_devices[] = {
+static struct i2c_board_info __initdata skomer_bringup_i2c2_devices[] = {
 #if 0
 #if defined(CONFIG_ACCEL_BMA222)
 	{
@@ -865,69 +901,53 @@ static struct i2c_board_info __initdata codina_r0_0_i2c2_devices[] = {
 #endif
 };
 
-static struct i2c_gpio_platform_data codina_gpio_i2c7_data = {
-	.sda_pin = TSP_SDA_CODINA_R0_0,
-	.scl_pin = TSP_SCL_CODINA_R0_0,
-	.udelay = 1, /* 500/udelay KHz  */
+static struct i2c_gpio_platform_data skomer_gpio_i2c3_data = {
+	.sda_pin = TSP_SDA_SKOMER_BRINGUP,
+	.scl_pin = TSP_SCL_SKOMER_BRINGUP,
+	.udelay = 3,	
+	.timeout = 10,
 };
 
-static struct platform_device codina_gpio_i2c7_pdata = {
+static struct platform_device skomer_gpio_i2c3_pdata = {
 	.name = "i2c-gpio",
-	.id = 7,
+	.id = 3,
 	.dev = {
-		.platform_data = &codina_gpio_i2c7_data,
+		.platform_data = &skomer_gpio_i2c3_data,
 	},
 };
 
-static struct i2c_board_info __initdata codina_r0_0_gpio_i2c7_devices[] = {
-#if defined(CONFIG_TOUCHSCREEN_ZINITIX_BT404)
+static struct i2c_board_info __initdata skomer_bringup_i2c3_devices[] = {
+#ifdef CONFIG_TOUCHSCREEN_TMA140
 	{
-		I2C_BOARD_INFO(BT404_ISP_DEVICE, 0x50),
-		.platform_data	= &bt404_ts_pdata,
+		I2C_BOARD_INFO("cypress-tma140", 0x20),
+		.platform_data	= &tma_pdata,
+		.irq = GPIO_TO_IRQ(TSP_INT_SKOMER_BRINGUP),
 	},
 #endif
 };
-
-static struct i2c_board_info __initdata codina_r0_0_i2c3_devices[] = {
-#if defined(CONFIG_TOUCHSCREEN_ZINITIX_BT404)
-	{
-		I2C_BOARD_INFO(BT404_TS_DEVICE, 0x20),
-		.platform_data	= &bt404_ts_pdata,
-		.irq = GPIO_TO_IRQ(TSP_INT_CODINA_R0_0),
-	},
-#endif
-};
-static struct i2c_gpio_platform_data codina_gpio_i2c4_data = {
-	.sda_pin = SUBPMU_SDA_CODINA_R0_0,
-	.scl_pin = SUBPMU_SCL_CODINA_R0_0,
+static struct i2c_gpio_platform_data skomer_gpio_i2c4_data = {
+	.sda_pin = SUBPMU_SDA_SKOMER_BRINGUP,
+	.scl_pin = SUBPMU_SCL_SKOMER_BRINGUP,
 	.udelay = 3,	/* closest to 400KHz */
 };
 
-static struct platform_device codina_gpio_i2c4_pdata = {
+static struct platform_device skomer_gpio_i2c4_pdata = {
 	.name = "i2c-gpio",
 	.id = 4,
 	.dev = {
-		.platform_data = &codina_gpio_i2c4_data,
+		.platform_data = &skomer_gpio_i2c4_data,
 	},
 };
 
-static struct i2c_board_info __initdata codina_r0_0_gpio_i2c4_devices[] = {
-    /* NCP6914 */
+static struct i2c_board_info __initdata skomer_bringup_gpio_i2c4_devices[] = {
 {
 	/* ncp6914 power management IC for the cameras */
 	I2C_BOARD_INFO("ncp6914", 0x10),
-	/* .platform_data = &ncp6914_plat_data, */
+	//.platform_data = &ncp6914_plat_data,
 },
-
-    /* SM5103 */
-    {
-        /* sm5103 power management IC for the cameras */
-        I2C_BOARD_INFO("sm5103", 0x7F),
-        /* .platform_data = &sm5103_plat_data, */
-    },
 };
 
-static struct i2c_board_info __initdata codina_r0_0_gpio_i2c4_devices_r0[] = {
+static struct i2c_board_info __initdata skomer_bringup_gpio_i2c4_devices_r0[] = {
 #ifdef CONFIG_SENSORS_HSCD
 	{
 		/* ALPS Magnetometer driver */
@@ -937,115 +957,175 @@ static struct i2c_board_info __initdata codina_r0_0_gpio_i2c4_devices_r0[] = {
 #endif
 };
 
-/*static struct i2c_gpio_platform_data codina_gpio_i2c5_data = {
-	.sda_pin = NFC_SDA_CODINA_R0_0,
-	.scl_pin = NFC_SCL_CODINA_R0_0,
-	.udelay = 3,*/	/* closest to 400KHz */
-/*};*/
+static struct i2c_gpio_platform_data skomer_gpio_i2c5_data = {
+	.sda_pin = AGC_I2C_SDA_SKOMER_BRINGUP,
+	.scl_pin = AGC_I2C_SCL_SKOMER_BRINGUP,
+	.udelay = 3,	/* closest to 400KHz */
+};
 
-/*static struct platform_device codina_gpio_i2c5_pdata = {
+static struct platform_device skomer_gpio_i2c5_pdata = {
 	.name = "i2c-gpio",
 	.id = 5,
 	.dev = {
-		.platform_data = &codina_gpio_i2c5_data,
+		.platform_data = &skomer_gpio_i2c5_data,
 	},
-};*/
+};
 
-/*static struct i2c_board_info __initdata codina_r0_0_gpio_i2c5_devices[] = {*/
+static struct i2c_board_info __initdata skomer_bringup_gpio_i2c5_devices[] = {
 /* TBD - NFC */
-/*#if 0
+#if defined(CONFIG_PROXIMITY_GP2A)
 	{
-		I2C_BOARD_INFO("", 0x30),
+		/* GP2A proximity sensor */
+		I2C_BOARD_INFO(GP2A_I2C_DEVICE_NAME, 0x44),
+		.platform_data = &gp2a_plat_data,
 	},
 #endif
-};*/
+#ifdef CONFIG_SENSORS_STK3X1X
+	{
+		I2C_BOARD_INFO("stk_ps", 0x90 >>1),
+		.platform_data = &stk3x1x_data,
+		.irq = GPIO_TO_IRQ(PS_INT_SKOMER_BRINGUP),
+	},
+#endif
+};
 
-static struct i2c_gpio_platform_data codina_gpio_i2c6_data = {
-	.sda_pin = SENSOR_SDA_CODINA_R0_0,
-	.scl_pin = SENSOR_SCL_CODINA_R0_0,
+static struct i2c_gpio_platform_data skomer_gpio_i2c6_data = {
+	.sda_pin = SENSOR_SDA_SKOMER_BRINGUP,
+	.scl_pin = SENSOR_SCL_SKOMER_BRINGUP,
 	.udelay = 3,	/* closest to 400KHz */
 };
 
-static struct platform_device codina_gpio_i2c6_pdata = {
+static struct platform_device skomer_gpio_i2c6_pdata = {
 	.name = "i2c-gpio",
 	.id = 6,
 	.dev = {
-	.platform_data = &codina_gpio_i2c6_data,
+	.platform_data = &skomer_gpio_i2c6_data,
 	},
 };
 
-static struct i2c_board_info __initdata codina_r0_0_gpio_i2c6_devices[] = {
-#ifdef CONFIG_SENSORS_KXDM
-		{
-			/* STM K2DM/K3DM Accelerometer driver */
-			I2C_BOARD_INFO("accsns_i2c", 0x19),
-		},
-#endif
-};
-
-static struct platform_device codina_gpio_i2c6_pdata_01 = {
-	.name = "i2c-gpio",
-	.id = 6,
-	.dev = {
-	.platform_data = &codina_gpio_i2c6_data,
-	},
-};
-
-static struct i2c_board_info __initdata codina_r0_0_gpio_i2c6_devices_01[] = {
-#ifdef CONFIG_SENSORS_HSCD
-		{
-			I2C_BOARD_INFO("bma222e", 0x18),
-		},
-#endif
+static struct i2c_board_info __initdata skomer_bringup_gpio_i2c6_devices[] = {
 #ifdef CONFIG_SENSORS_BMA254
-		{
-			I2C_BOARD_INFO("bma254", 0x18),
-		},
+	{
+		I2C_BOARD_INFO("bma254", 0x18),
+#ifdef CONFIG_BMA254_SMART_ALERT
+        .platform_data = &bma254_pdata,
+#endif
+	},
 #endif
 };
 
-static struct i2c_gpio_platform_data codina_gpio_i2c8_data = {
-	.sda_pin = COMP_SDA_CODINA_R0_0,
-	.scl_pin = COMP_SCL_CODINA_R0_0,
+static struct platform_device skomer_gpio_i2c6_pdata_01 = {
+	.name = "i2c-gpio",
+	.id = 6,
+	.dev = {
+	.platform_data = &skomer_gpio_i2c6_data,
+	},
+};
+
+static struct mpu6050_input_platform_data mpu6050_pdata = {
+	.orientation = {0, -1, 0,
+				1, 0, 0,
+				0, 0, 1},
+	.acc_cal_path = "/efs/calibration_data",
+	.gyro_cal_path = "/efs/gyro_cal_data",
+};
+
+static struct i2c_board_info __initdata skomer_bringup_gpio_i2c6_devices_01[] = {
+{
+			I2C_BOARD_INFO("mpu6050_input", 0x68),
+				.irq = GPIO_TO_IRQ(SENSORS_INT_SKOMER_BRINGUP),
+				.platform_data = &mpu6050_pdata,
+},
+
+};
+
+static struct i2c_board_info __initdata skomer_bringup_gpio_i2c7_devices[] = {
+#ifdef CONFIG_KEYBOARD_NTS_TOUCHKEY
+		{
+			I2C_BOARD_INFO(NTS_TOUCHKEY_DEVICE, 0x60),
+			.platform_data	= &nts_touchkey_pdata,
+			.irq = GPIO_TO_IRQ(TOUCHKEY_INT_SKOMER_BRINGUP),
+		},
+#endif
+#ifdef CONFIG_KEYBOARD_TC360_TOUCHKEY
+	{
+		I2C_BOARD_INFO(TC360_DEVICE, 0x20),
+		.platform_data	= &tc360_pdata,
+		.irq = GPIO_TO_IRQ(TOUCHKEY_INT_SKOMER_BRINGUP),
+	},
+#endif
+};
+
+static struct i2c_gpio_platform_data skomer_gpio_i2c7_data = {
+	.sda_pin = TOUCHKEY_SDA_SKOMER_BRINGUP,
+	.scl_pin = TOUCHKEY_SCL_SKOMER_BRINGUP,
+	.udelay = 5,
+};
+
+static struct platform_device skomer_gpio_i2c7_pdata = {
+	.name = "i2c-gpio",
+	.id = 7,
+	.dev = {
+		.platform_data = &skomer_gpio_i2c7_data,
+	},
+};
+
+static struct i2c_gpio_platform_data skomer_gpio_i2c8_data = {
+	.sda_pin = COMP_SDA_SKOMER_BRINGUP,
+	.scl_pin = COMP_SCL_SKOMER_BRINGUP,
 	.udelay = 3,	/* closest to 400KHz */
 };
 
-static struct platform_device codina_gpio_i2c8_pdata = {
+static struct platform_device skomer_gpio_i2c8_pdata = {
 	.name = "i2c-gpio",
 	.id = 8,
 	.dev = {
-		.platform_data = &codina_gpio_i2c8_data,
+		.platform_data = &skomer_gpio_i2c8_data,
 	},
 };
 
-#if defined(CONFIG_SENSORS_HSCD) || defined(CONFIG_SENSORS_ACCEL) || defined(CONFIG_SENSORS_HSCDTD008A)
 static struct platform_device alps_pdata = {
 	.name = "alps-input",
 	.id = -1,
 };
-#endif
 
-static struct i2c_board_info __initdata codina_r0_0_gpio_i2c8_devices[] = {
-#ifdef CONFIG_SENSORS_HSCD
-		{
+static struct i2c_board_info __initdata skomer_bringup_gpio_i2c8_devices[] = {
+	{
 		/* ALPS Magnetometer driver */
 		I2C_BOARD_INFO("hscd_i2c", 0x0c),
 
-		},
-#endif
-#ifdef CONFIG_SENSORS_HSCDTD008A
-	{
-		/* ALPS magnetometer HSCDTD008A */
-		I2C_BOARD_INFO("hscd_i2c", 0x0c),
+},
+};
+
+/* I2C GPIO: NFC */
+static struct i2c_gpio_platform_data skomer_gpio_i2c9_data = {
+	.sda_pin = NFC_SDA_18V_SKOMER_BRINGUP,
+	.scl_pin = NFC_SCL_18V_SKOMER_BRINGUP,
+	.udelay = 3,	/* closest to 400KHz */
+};
+
+static struct platform_device skomer_gpio_i2c9_pdata = {
+	.name = "i2c-gpio",
+	.id = 9,
+	.dev = {
+		.platform_data = &skomer_gpio_i2c9_data,
 	},
-#endif
+};
+
+static struct i2c_board_info __initdata skomer_bringup_gpio_i2c9_devices[] = {
+	{
+		/* I2C GPIO: NFC PN547 */
+		I2C_BOARD_INFO("pn547", 0x2B), /* 0x28, 0x29, 0x2A, 0x2B */
+		.platform_data	= &rx71_nfc_data,
+		.irq = GPIO_TO_IRQ(NFC_IRQ_SKOMER_BRINGUP),
+	},
 };
 
 #ifdef CONFIG_KEYBOARD_GPIO
-struct gpio_keys_button codina_r0_0_gpio_keys[] = {
+struct gpio_keys_button skomer_bringup_gpio_keys[] = {
 	{
 	.code = KEY_HOMEPAGE,		/* input event code (KEY_*, SW_*) */
-	.gpio = HOME_KEY_CODINA_R0_0,
+	.gpio = HOME_KEY_SKOMER_BRINGUP,
 	.active_low = 1,
 	.desc = "home_key",
 	.type = EV_KEY,		/* input event type (EV_KEY, EV_SW) */
@@ -1055,19 +1135,133 @@ struct gpio_keys_button codina_r0_0_gpio_keys[] = {
 	},
 	{
 	.code = KEY_VOLUMEUP,		/* input event code (KEY_*, SW_*) */
-	.gpio = VOL_UP_CODINA_R0_0,
+	.gpio = VOL_UP_SKOMER_BRINGUP,
 	.active_low = 1,
 	.desc = "volup_key",
 	.type = EV_KEY,		/* input event type (EV_KEY, EV_SW) */
-	.wakeup = 0,
+	.wakeup = 1,
 	.debounce_interval = 30,	/* debounce ticks interval in msecs */
 	.can_disable = false,
 	},
 	{
 	.code = KEY_VOLUMEDOWN,		/* input event code (KEY_*, SW_*) */
-	.gpio = VOL_DOWN_CODINA_R0_0,
+	.gpio = VOL_DOWN_SKOMER_BRINGUP,
 	.active_low = 1,
 	.desc = "voldown_key",
+	.type = EV_KEY,		/* input event type (EV_KEY, EV_SW) */
+	.wakeup = 1,		/* configure the button as a wake-up source */
+	.debounce_interval = 30,	/* debounce ticks interval in msecs */
+	.can_disable = false,
+	},
+	{
+	.code = KEY_BACK,		/* input event code (KEY_*, SW_*) */
+	.gpio = BACK_KEY_N_SKOMER_BRINGUP,
+	.active_low = 1,
+	.desc = "back_key",
+	.type = EV_KEY,		/* input event type (EV_KEY, EV_SW) */
+	.wakeup = 0,		/* configure the button as a wake-up source */
+	.debounce_interval = 30,	/* debounce ticks interval in msecs */
+	.can_disable = false,
+	},
+	{
+	.code = KEY_MENU,		/* input event code (KEY_*, SW_*) */
+	.gpio = MENU_KEY_N_SKOMER_BRINGUP,
+	.active_low = 1,
+	.desc = "menu_key",
+	.type = EV_KEY,		/* input event type (EV_KEY, EV_SW) */
+	.wakeup = 0,		/* configure the button as a wake-up source */
+	.debounce_interval = 30,	/* debounce ticks interval in msecs */
+	.can_disable = false,
+	},
+    {
+	.code = KEY_CAMERA_FOCUS,		/* input event code (KEY_*, SW_*) */
+	.gpio = CAM_KEY_H_SKOMER_BRINGUP,
+	.active_low = 1,
+	.desc = "cam_half_key",
+	.type = EV_KEY,		/* input event type (EV_KEY, EV_SW) */
+	.wakeup = 0,		/* configure the button as a wake-up source */
+	.debounce_interval = 30,	/* debounce ticks interval in msecs */
+	.can_disable = false,
+	},
+    {
+	.code = KEY_CAMERA,		/* input event code (KEY_*, SW_*) */
+	.gpio = CAM_KEY_F_SKOMER_BRINGUP,
+	.active_low = 1,
+	.desc = "cam_full_key",
+	.type = EV_KEY,		/* input event type (EV_KEY, EV_SW) */
+	.wakeup = 0,		/* configure the button as a wake-up source */
+	.debounce_interval = 30,	/* debounce ticks interval in msecs */
+	.can_disable = false,
+	}
+};
+
+struct gpio_keys_platform_data skomer_bringup_gpio_data = {
+	.buttons = skomer_bringup_gpio_keys,
+	.nbuttons = ARRAY_SIZE(skomer_bringup_gpio_keys),
+};
+
+struct platform_device skomer_gpio_keys_device = {
+	.name = "gpio-keys",
+	.dev = {
+		.platform_data = &skomer_bringup_gpio_data,
+	},
+};
+struct gpio_keys_button skomer_r02_gpio_keys[] = {
+	{
+	.code = KEY_HOMEPAGE,		/* input event code (KEY_*, SW_*) */
+	.gpio = HOME_KEY_SKOMER_BRINGUP,
+	.active_low = 1,
+	.desc = "home_key",
+	.type = EV_KEY,		/* input event type (EV_KEY, EV_SW) */
+	.wakeup = 1,		/* configure the button as a wake-up source */
+	.debounce_interval = 30,	/* debounce ticks interval in msecs */
+	.can_disable = false,
+	},
+	{
+	.code = KEY_VOLUMEUP,		/* input event code (KEY_*, SW_*) */
+	.gpio = VOL_UP_SKOMER_BRINGUP,
+	.active_low = 1,
+	.desc = "volup_key",
+	.type = EV_KEY,		/* input event type (EV_KEY, EV_SW) */
+	.wakeup = 1,
+	.debounce_interval = 30,	/* debounce ticks interval in msecs */
+	.can_disable = false,
+	},
+	{
+	.code = KEY_VOLUMEDOWN,		/* input event code (KEY_*, SW_*) */
+	.gpio = VOL_DOWN_SKOMER_BRINGUP,
+	.active_low = 1,
+	.desc = "voldown_key",
+	.type = EV_KEY,		/* input event type (EV_KEY, EV_SW) */
+	.wakeup = 1,		/* configure the button as a wake-up source */
+	.debounce_interval = 30,	/* debounce ticks interval in msecs */
+	.can_disable = false,
+	},
+	{
+	.code = KEY_BACK,		/* input event code (KEY_*, SW_*) */
+	.gpio = BACK_KEY_N_SKOMER_BRINGUP,
+	.active_low = 1,
+	.desc = "back_key",
+	.type = EV_KEY,		/* input event type (EV_KEY, EV_SW) */
+	.wakeup = 0,		/* configure the button as a wake-up source */
+	.debounce_interval = 30,	/* debounce ticks interval in msecs */
+	.can_disable = false,
+	},
+	{
+	.code = KEY_MENU,		/* input event code (KEY_*, SW_*) */
+	.gpio = MENU_KEY_N_SKOMER_BRINGUP,
+	.active_low = 1,
+	.desc = "menu_key",
+	.type = EV_KEY,		/* input event type (EV_KEY, EV_SW) */
+	.wakeup = 0,		/* configure the button as a wake-up source */
+	.debounce_interval = 30,	/* debounce ticks interval in msecs */
+	.can_disable = false,
+	},
+     {
+	.code = KEY_CAMERA,		/* input event code (KEY_*, SW_*) */
+	.gpio = CAM_KEY_H_SKOMER_BRINGUP,   /* single key for Rev0.2 */
+	.active_low = 1,
+	.desc = "cam_key",
 	.type = EV_KEY,		/* input event type (EV_KEY, EV_SW) */
 	.wakeup = 0,		/* configure the button as a wake-up source */
 	.debounce_interval = 30,	/* debounce ticks interval in msecs */
@@ -1075,15 +1269,15 @@ struct gpio_keys_button codina_r0_0_gpio_keys[] = {
 	},
 };
 
-struct gpio_keys_platform_data codina_r0_0_gpio_data = {
-	.buttons = codina_r0_0_gpio_keys,
-	.nbuttons = ARRAY_SIZE(codina_r0_0_gpio_keys),
+struct gpio_keys_platform_data skomer_r02_gpio_data = {
+	.buttons = skomer_r02_gpio_keys,
+	.nbuttons = ARRAY_SIZE(skomer_r02_gpio_keys),
 };
 
-struct platform_device codina_gpio_keys_device = {
+struct platform_device skomer_r02_gpio_keys_device = {
 	.name = "gpio-keys",
 	.dev = {
-		.platform_data = &codina_r0_0_gpio_data,
+		.platform_data = &skomer_r02_gpio_data,
 	},
 };
 #endif
@@ -1487,7 +1681,7 @@ struct platform_device usb_phonet_device = {
 #endif /* CONFIG_USB_ANDROID */
 
 #define U8500_I2C_CONTROLLER(id, _slsu, _tft, _rft, clk, t_out, _sm) \
-static struct nmk_i2c_controller codina_i2c##id##_data = { \
+static struct nmk_i2c_controller skomer_i2c##id##_data = { \
 	/*				\
 	 * slave data setup time, which is	\
 	 * 250 ns,100ns,10ns which is 14,6,2	\
@@ -1521,7 +1715,7 @@ U8500_I2C_CONTROLLER(3, 0xe, 1, 8, 400000, 200, I2C_FREQ_MODE_FAST);
  * SSP
  */
 #define NUM_SPI_CLIENTS 1
-static struct pl022_ssp_controller codina_spi0_data = {
+static struct pl022_ssp_controller skomer_spi0_data = {
 	.bus_id		= SPI023_0_CONTROLLER,
 	.num_chipselect	= NUM_SPI_CLIENTS,
 };
@@ -1533,14 +1727,14 @@ static struct spi_board_info spi_board_info[] __initdata = {
 		.bus_num		= SPI023_0_CONTROLLER,
 		.chip_select		= 0,
 		.mode			= SPI_MODE_3,
-		.controller_data	= (void *)LCD_CSX_CODINA_R0_0,
+//		.controller_data	= (void *)LCD_CSX_SKOMER_BRINGUP,
 	},
 };
 
-static struct spi_gpio_platform_data codina_spi_gpio_data = {
-	.sck		= LCD_CLK_CODINA_R0_0,	/* LCD_CLK */
-	.mosi		= LCD_SDI_CODINA_R0_0,	/* LCD_SDI */
-	.miso		= LCD_SDO_CODINA_R0_0,	/* LCD_SDO */
+static struct spi_gpio_platform_data skomer_spi_gpio_data = {
+//	.sck		= LCD_CLK_SKOMER_BRINGUP,	/* LCD_CLK */
+//	.mosi		= LCD_SDI_SKOMER_BRINGUP,	/* LCD_SDI */
+//	.miso		= LCD_SDO_SKOMER_BRINGUP,	/* LCD_SDO */
 	.num_chipselect	= 2,
 };
 
@@ -1549,7 +1743,7 @@ static struct platform_device ux500_spi_gpio_device = {
 	.name	= "spi_gpio",
 	.id	= SPI023_0_CONTROLLER,
 	.dev	= {
-		.platform_data = &codina_spi_gpio_data,
+		.platform_data = &skomer_spi_gpio_data,
 	},
 };
 
@@ -1597,7 +1791,7 @@ static struct ab8500_gpio_platform_data ab8505_gpio_pdata = {
 	 * register. This is the array of 8 configuration settings.
 	 * One has to compile time decide these settings. Below is the
 	 * explanation of these setting
-	 * GpioSel1 = 0x0F => Pin GPIO1 (SysClkReq2)
+	 * GpioSel1 = 0x0B => Pin GPIO1 (SysClkReq2)
 	 *                    Pin GPIO2 (SysClkReq3)
 	 *                    Pin GPIO3 (SysClkReq4)
 	 *                    Pin GPIO4 (SysClkReq6) are configured as GPIO
@@ -1606,20 +1800,20 @@ static struct ab8500_gpio_platform_data ab8505_gpio_pdata = {
 	 *                    Pin GPIO14, NC
 	 *                    Pins GPIO15,16 NotAvail
 	 * GpioSel3 = 0x00 => Pins GPIO17-20 AD_Data2, DA_Data2, Fsync2, BitClk2
-	 *                    Pins GPIO21-24 NA
+         *                    Pins GPIO21-24 NA
 	 * GpioSel4 = 0x00 => Pins GPIO25, 27-32 NotAvail
 	 * GpioSel5 = 0x02 => Pin GPIO34 (ExtCPEna) NC
 	 *		      Pin GPIO40 (ModScl) I2C_MODEM_SCL
 	 * GpioSel6 = 0x00 => Pin GPIO41 (ModSda) I2C_MODEM_SDA
-	 *                    Pin GPIO42 NotAvail
+         *                    Pin GPIO42 NotAvail
 	 * GpioSel7 = 0x00 => Pin GPIO50, IF_RXD
-	 *                    Pins GPIO51 & 60 NotAvail
-	 *                    Pin GPIO52 (RestHW) RST_AB8505
-	 *                    Pin GPIO53 (Service) Service_AB8505
+         *                    Pins GPIO51 & 60 NotAvail
+         *                    Pin GPIO52 (RestHW) RST_AB8505
+         *                    Pin GPIO53 (Service) Service_AB8505
 	 * AlternatFunction = 0x0C => GPIO13, 50 UartTX, RX
 	 *
 	 */
-	.config_reg     = {0x0F, 0x26, 0x00, 0x00, 0x02, 0x00, 0x00, 0x0C},
+	.config_reg     = {0x0B, 0x26, 0x00, 0x00, 0x02, 0x00, 0x00, 0x0C},
 
 	/*
 	 * config_direction allows for the initial GPIO direction to
@@ -1633,7 +1827,7 @@ static struct ab8500_gpio_platform_data ab8505_gpio_pdata = {
  	 * GPIO2/3(GpioPud1) = 1 and GPIO10/11(GpioPud2) = 1.
 	 * GPIO13(GpioPud2) = 1 and GPIO50(GpioPud7) = 1.
 	 */
-	.config_pullups    = {0xE6, 0x17, 0x00, 0x00, 0x00, 0x00, 0x06},
+	.config_pullups    = {0xE7, 0x17, 0x00, 0x00, 0x00, 0x00, 0x06},
 };
 
 
@@ -1645,7 +1839,6 @@ static struct ab8500_sysctrl_platform_data ab8500_sysctrl_pdata = {
 	 */
 	.initial_req_buf_config
 			= {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-	.reboot_reason_code = reboot_reason_code,
 };
 
 
@@ -1661,16 +1854,16 @@ static struct sec_jack_zone sec_jack_zones[] = {
 		.jack_type = SEC_HEADSET_3POLE,
 	},
 	{
-		/* 0 < adc <= 650, unstable zone, default to 3pole if it stays
+		/* 0 < adc <= 819, unstable zone, default to 3pole if it stays
 		 * in this range for a 600ms (30ms delays, 20 samples)
 		 */
-		.adc_high = 650,
+		.adc_high = 819,
 		.delay_ms = 30,
 		.check_count = 20,
 		.jack_type = SEC_HEADSET_3POLE,
 	},
 	{
-		/* 650 < adc <= 1000, unstable zone, default to 4pole if it
+		/* 820 < adc <= 1000, unstable zone, default to 4pole if it
 		 * stays in this range for 900ms (30ms delays, 30 samples)
 		 */
 		.adc_high = 1000,
@@ -1679,16 +1872,16 @@ static struct sec_jack_zone sec_jack_zones[] = {
 		.jack_type = SEC_HEADSET_4POLE,
 	},
 	{
-		/* 1000 < adc <= 1680, default to 4 pole if it stays */
+		/* 1000 < adc <= 1749, default to 4 pole if it stays */
 		/* in this range for 40ms (20ms delays, 2 samples)
 		 */
-		.adc_high = 1680,
+		.adc_high = 1850,
 		.delay_ms = 20,
 		.check_count = 2,
 		.jack_type = SEC_HEADSET_4POLE,
 	},
 	{
-		/* adc > 1680, unstable zone, default to 3pole if it stays
+		/* adc >= 1750, unstable zone, default to 3pole if it stays
 		 * in this range for a second (10ms delays, 100 samples)
 		 */
 		.adc_high = 0x7fffffff,
@@ -1701,22 +1894,22 @@ static struct sec_jack_zone sec_jack_zones[] = {
 /* to support 3-buttons earjack */
 static struct sec_jack_buttons_zone sec_jack_buttons_zones[] = {
 	{
-		/* 0 <= adc <=105, stable zone */
+		/* 0 <= adc <=90, stable zone */
 		.code		= KEY_MEDIA,
 		.adc_low	= 0,
-		.adc_high	= 105,
+		.adc_high	= 115,
 	},
 	{
-		/* 106 <= adc <= 240, stable zone */
+		/* 91 <= adc <= 240, stable zone */
 		.code		= KEY_VOLUMEUP,
-		.adc_low	= 106,
-		.adc_high	= 240,
+		.adc_low	= 116,
+		.adc_high	= 237,
 	},
 	{
-		/* 241 <= adc <= 500, stable zone */
+		/* 241 <= adc <= 550, stable zone */
 		.code		= KEY_VOLUMEDOWN,
-		.adc_low	= 241,
-		.adc_high	= 500,
+		.adc_low	= 238,
+		.adc_high	= 620,
 	},
 };
 
@@ -1732,18 +1925,19 @@ static void sec_jack_mach_init(struct platform_device *pdev)
 	/* initialise threshold for ACCDETECT1 comparator
 	 * and the debounce for all ACCDETECT comparators */
 	ret = abx500_set_register_interruptible(&pdev->dev, AB8500_ECI_AV_ACC,
-						0x80, 0x41);
+						0x80, 0x49);
 	if (ret < 0)
 		pr_err("%s: ab8500 write failed\n", __func__);
 
 	/* initialise threshold for ACCDETECT2 comparator1 and comparator2 */
 	ret = abx500_set_register_interruptible(&pdev->dev, AB8500_ECI_AV_ACC,
-						0x81, 0xB3);
+						0x81, 0xB4);
 	if (ret < 0)
 		pr_err("%s: ab8500 write failed\n", __func__);
 
 	ret = abx500_set_register_interruptible(&pdev->dev, AB8500_ECI_AV_ACC,
-						0x82, 0x33); //KSND
+						0x82, 0x33);
+
 	if (ret < 0)
 		pr_err("%s: ab8500 write failed\n", __func__);
 
@@ -1784,21 +1978,20 @@ struct sec_jack_platform_data sec_jack_pdata = {
 	.buttons_f = "ACC_DETECT_21DB_F",
 	.regulator_mic_source = "v-amic1",
 #ifdef CONFIG_SAMSUNG_JACK_SW_WATERPROOF
-	.ear_reselector_zone    = 1650,
+	.ear_reselector_zone    = 1653,
 #endif
 };
 #endif
 
-#if 0
 static struct ab8500_led_pwm leds_pwm_data[] = {
 
 };
 
-struct ab8500_pwmled_platform_data codina_pwmled_plat_data = {
+
+struct ab8500_pwmled_platform_data skomer_pwmled_plat_data = {
 	.num_pwm = 0,
 	.leds = leds_pwm_data,
 };
-#endif
 
 #ifdef CONFIG_MODEM_U8500
 static struct platform_device u8500_modem_dev = {
@@ -1814,6 +2007,7 @@ static struct platform_device u8500_modem_dev = {
 static struct dbx500_cpuidle_platform_data db8500_cpuidle_platform_data = {
 	.wakeups = PRCMU_WAKEUP(ARM) | PRCMU_WAKEUP(RTC) | PRCMU_WAKEUP(ABB),
 };
+
 struct platform_device db8500_cpuidle_device = {
 	.name	= "dbx500-cpuidle",
 	.id	= -1,
@@ -1837,7 +2031,7 @@ struct platform_device db9500_cpuidle_device = {
 
 static struct ab8500_platform_data ab8500_platdata = {
 	.irq_base	= MOP500_AB8500_IRQ_BASE,
-	.regulator	= &codina_ab8500_regulator_plat_data,
+	.regulator	= &skomer_ab8500_regulator_plat_data,
 #ifdef CONFIG_BATTERY_SAMSUNG
 	.sec_bat	= &sec_battery_pdata,
 #else
@@ -1849,7 +2043,7 @@ static struct ab8500_platform_data ab8500_platdata = {
 #endif
 	.gpio		= &ab8500_gpio_pdata,
 	.sysctrl	= &ab8500_sysctrl_pdata,
-//	.pwmled		= &codina_pwmled_plat_data,
+//	.pwmled		= &skomer_pwmled_plat_data,
 #ifdef CONFIG_INPUT_AB8500_ACCDET
 	.accdet = &ab8500_accdet_pdata,
 #endif
@@ -1885,6 +2079,7 @@ static struct platform_device ab8500_device = {
 
 static struct ab8500_platform_data ab8505_platdata = {
 	.irq_base	= MOP500_AB8500_IRQ_BASE,
+	.regulator	= &skomer_ab8505_regulator_plat_data,
 #ifdef CONFIG_BATTERY_SAMSUNG
 	.sec_bat = &sec_battery_pdata,
 #else
@@ -1896,7 +2091,7 @@ static struct ab8500_platform_data ab8505_platdata = {
 #endif
 	.gpio		= &ab8505_gpio_pdata,
 	.sysctrl	= &ab8500_sysctrl_pdata,
-//	.pwmled		= &codina_pwmled_plat_data,
+//	.pwmled		= &skomer_pwmled_plat_data,
 #ifdef CONFIG_INPUT_AB8500_ACCDET
 	.accdet = &ab8500_accdet_pdata,
 #endif
@@ -1928,13 +2123,8 @@ static struct platform_device bcm4334_bluetooth_device = {
 	.name = "bcm4334_bluetooth",
 	.id = -1,
 };
-#elif defined (CONFIG_BT_BCM4330)
-static struct platform_device bcm4330_bluetooth_platform_driver = {
-        .name = "bcm4330_bluetooth",
-        .id = -1,
-};
 #else
-#ifndef CONFIG_BT_CG2900
+#if (defined CONFIG_RFKILL && !defined CONFIG_CG2900)
 static struct platform_device sec_device_rfkill = {
 	.name = "bt_rfkill",
 	.id = -1,
@@ -1952,7 +2142,7 @@ static pin_cfg_t mop500_pins_uart0[] = {
 static void ux500_uart0_init(void)
 {
 	int ret;
-
+    
 	ret = nmk_config_pins(mop500_pins_uart0,
 			ARRAY_SIZE(mop500_pins_uart0));
 	if (ret < 0)
@@ -1987,6 +2177,12 @@ static void u8500_uart2_reset(void)
 	return u8500_reset_ip(3, PRCC_K_SOFTRST_UART2_MASK);
 }
 
+static void bt_wake_peer(struct uart_port *port)
+{
+	printk("@@@@ BT WAKE_PEER\n");
+	return;
+}
+
 static struct amba_pl011_data uart0_plat = {
 #ifdef CONFIG_STE_DMA40_REMOVE
 	.dma_filter = stedma40_filter,
@@ -1996,7 +2192,7 @@ static struct amba_pl011_data uart0_plat = {
 	.init = ux500_uart0_init,
 	.exit = ux500_uart0_exit,
     .reset = u8500_uart0_reset,
-#if defined(CONFIG_BT_BCM4334) || defined(CONFIG_BT_BCM4330)
+#ifdef CONFIG_BT_BCM4334
 	.amba_pl011_wake_peer = bcm_bt_lpm_exit_lpm_locked,
 #else
 	.amba_pl011_wake_peer = NULL,
@@ -2024,8 +2220,6 @@ static struct amba_pl011_data uart2_plat = {
 };
 
 
-
-
 #if defined(CONFIG_BACKLIGHT_KTD253)
 /* The following table is used to convert brightness level to the LED
     Current Ratio expressed as (full current) /(n * 32).
@@ -2034,123 +2228,93 @@ static struct amba_pl011_data uart2_plat = {
     to compensate for non-linearity of brightness relative to current.
 */
 static const unsigned short ktd253CurrentRatioLookupTable[] = {
-0,	/* (0/32)		KTD259_BACKLIGHT_OFF */
-30,	/* (1/32)		KTD259_MIN_CURRENT_RATIO */
-39,	/* (2/32) */
-48,	/* (3/32) */
-58,	/* (4/32) */
-67,	/* (5/32) */
-76,	/* (6/32) */
-85,	/* (7/32) */
-94,	/* (8/32) */
-104,	/* (9/32) */
-113,	/* (10/32) */
-122,	/* (11/32) */
-131,	/* (12/32) */
-140,	/* (13/32) */
-150,	/* (14/32) */
-159,	/* (15/32) */
-168,	/* (16/32) default(168,180CD)*/
-178,	/* (17/32) */
-183,	/* (18/32)  */
-188,	/* (19/32) */
-194,	/* (20/32) */
-199,	/* (21/32) */
-204,	/* (22/32) */
-209,	/* (23/32) */
-214,	/* (24/32) */
-219,	/* (25/32) */
-224,	/* (26/32) */
-229,	/* (27/32) */
-235,	/* (28/32) */
-240,	/* (29/32) */
-245,	/* (30/32) */
-250,	/* (31/32) */
-255	/* (32/32)	KTD259_MAX_CURRENT_RATIO */
+0,		/* (0/32)		KTD253_BACKLIGHT_OFF */
+39,   /* (1/32)   KTD253_MIN_CURRENT_RATIO */
+58,   /* (2/32) */
+67,   /* (3/32) */
+76,   /* (4/32) */
+85,   /* (5/32) */
+94,   /* (6/32) */
+104,    /* (7/32) */
+113,    /* (8/32) */
+122,    /* (9/32) */
+131,    /* (10/32) */
+145,    /* (11/32) */
+159,    /* (12/32) */
+169,    /* (13/32) */
+179,    /* (14/32) */
+189,    /* (15/32) */
+196,    /* (16/32) */
+203,    /* (17/32) */
+210,    /* (18/32) */
+217,    /* (19/32) */
+224,    /* (20/32) */
+231,    /* (21/32) */
+238,    /* (22/32) */
+245,    /* (23/32) */
+255,    /* (24/32) */
+300,    /* (25/32) */
+300,    /* (26/32) */
+300,    /* (27/32) */
+300,    /* (28/32) */
+300,    /* (29/32) */
+300,    /* (30/32) */
+300,    /* (31/32) */
+300     /* (32/32)    KTD253_MAX_CURRENT_RATIO */
 };
 
-static struct ktd253x_bl_platform_data codina_bl_platform_info = {
+static struct ktd253x_bl_platform_data skomer_bl_platform_info = {
 	.bl_name			= "pwm-backlight",
-//	.ctrl_gpio				= LCD_BL_CTRL_CODINA_R0_0,	Setup moved to codina_init_machine()
+	.ctrl_gpio			= LCD_BL_CTRL_SKOMER_BRINGUP,
 	.ctrl_high			= 1,
 	.ctrl_low			= 0,
 	.max_brightness			= 255,
 	.brightness_to_current_ratio	= ktd253CurrentRatioLookupTable,
-		/* Control backlight on/off via callback function to synchronise with display on/off */
+
+	/* Control backlight on/off via callback function to synchronise with display on/off */
 	.external_bl_control		= true,
 };
 
-static struct platform_device codina_backlight_device = {
+static struct platform_device skomer_backlight_device = {
 	.name = BL_DRIVER_NAME_KTD253,
 	.id = -1,
 	.dev = {
-		.platform_data = &codina_bl_platform_info,
+		.platform_data = &skomer_bl_platform_info,
 	},
 };
+
+#if defined(CONFIG_TORCH_FLASH)
+
+static struct platform_device torch_flash_device = {
+	.name 		= "torch-flash",
+	.id 		= -1,
+};
+
+#endif
 #endif
 
-#ifdef CONFIG_LEDS_CLASS
-#ifdef CONFIG_LEDS_REGULATOR
-static struct led_regulator_platform_data codina_reg_leds_pdata = {
-	.name = "button-backlight",	/* LED name as expected by LED class */
-	.reg_id = "v-keyled-3.3",
-	.brightness = LED_OFF,		/* initial brightness value */
-};
 
-static struct platform_device codina_regulator_leds_device = {
-	.name = "leds-regulator",
-	.id = -1,
-	.dev = {
-		.platform_data = &codina_reg_leds_pdata,
-	},
-};
-#endif
-
-static struct gpio_led codina_leds[] = {
-	{
-		.name			= "button-backlight",
-		.gpio			= KEY_LED_EN_CODINA_R0_0,
-		.active_low		= 0,
-		.retain_state_suspended = 0,
-		.default_state		= LEDS_GPIO_DEFSTATE_OFF,
-	},
-};
-
-static struct gpio_led_platform_data codina_gpio_leds_pdata = {
-	.num_leds	= ARRAY_SIZE(codina_leds),
-	.leds		= codina_leds,
-	.gpio_blink_set	= NULL,
-};
-
-static struct platform_device codina_gpio_leds_device = {
-	.name = "leds-gpio",
-	.id = -1,
-	.dev = {
-		.platform_data = &codina_gpio_leds_pdata,
-	},
-};
-#endif
 
 #ifdef CONFIG_ANDROID_TIMED_GPIO
-static struct timed_gpio codina_timed_gpios[] = {
+static struct timed_gpio skomer_timed_gpios[] = {
 	{
 		.name		= "vibrator",
-		.gpio		= MOT_EN_CODINA_R0_0,
+		.gpio		= MOT_EN_SKOMER_BRINGUP,
 		.max_timeout	= 10000,
 		.active_low	= 0,
 	},
 };
 
-static struct timed_gpio_platform_data codina_timed_gpio_pdata = {
-	.num_gpios	= ARRAY_SIZE(codina_timed_gpios),
-	.gpios		= codina_timed_gpios,
+static struct timed_gpio_platform_data skomer_timed_gpio_pdata = {
+	.num_gpios	= ARRAY_SIZE(skomer_timed_gpios),
+	.gpios		= skomer_timed_gpios,
 };
 
-static struct platform_device codina_timed_gpios_device = {
+static struct platform_device skomer_timed_gpios_device = {
 	.name = TIMED_GPIO_NAME,
 	.id = -1,
 	.dev = {
-		.platform_data = &codina_timed_gpio_pdata,
+		.platform_data = &skomer_timed_gpio_pdata,
 	},
 };
 #endif
@@ -2205,6 +2369,11 @@ static struct platform_device *platform_devs[] __initdata = {
 	&ux500_spi_gpio_device,
 #endif
 	&ux500_mcde_device,
+#ifdef CONFIG_MCDE_DISPLAY_DSI
+	&u8500_dsilink_device[0],
+	&u8500_dsilink_device[1],
+	&u8500_dsilink_device[2],
+#endif
 	&ux500_b2r2_device,
 	&ux500_b2r2_blt_device,
 #ifdef CONFIG_STE_TRACE_MODEM
@@ -2235,73 +2404,98 @@ static struct platform_device *platform_devs[] __initdata = {
 #endif
 #ifdef CONFIG_BT_BCM4334
 	&bcm4334_bluetooth_device,
-#elif defined (CONFIG_BT_BCM4330)
-	&bcm4330_bluetooth_platform_driver,
 #else
-#if (defined CONFIG_RFKILL && !defined CONFIG_BT_CG2900)
+#if (defined CONFIG_RFKILL && !defined CONFIG_CG2900)
 	&sec_device_rfkill,
 #endif
 #endif
 #if defined(CONFIG_BACKLIGHT_KTD253)
-	&codina_backlight_device,
+	&skomer_backlight_device,
+#if defined (CONFIG_TORCH_FLASH)
+	&torch_flash_device,
+#endif
 #endif
 #ifdef CONFIG_ANDROID_TIMED_GPIO
-	&codina_timed_gpios_device,
+	&skomer_timed_gpios_device,
 #endif
-#if defined(CONFIG_SENSORS_HSCD) || defined(CONFIG_SENSORS_ACCEL) || defined(CONFIG_SENSORS_HSCDTD008A)
+#if defined(CONFIG_SENSORS_ALPS)
 	&alps_pdata,
+#endif
+#if defined(CONFIG_SENSORS_PX3215)
+	&px3215_plat_data,
 #endif
 };
 
 /* Callback function from display driver used to control backlight on/off */
-void codina_backlight_on_off(bool on)
+void skomer_backlight_on_off(bool on)
 {
-	if (codina_bl_platform_info.external_bl_control && codina_bl_platform_info.bl_on_off)
-		codina_bl_platform_info.bl_on_off(codina_bl_platform_info.bd, on);
+	if (skomer_bl_platform_info.external_bl_control && skomer_bl_platform_info.bl_on_off)
+		skomer_bl_platform_info.bl_on_off(skomer_bl_platform_info.bd, on);
 }
 
-static void __init codina_i2c_init(void)
+#ifdef CONFIG_INPUT_MPU6050
+static void skomer_mpu_init(void)
 {
-	db8500_add_i2c0(&codina_i2c0_data);
-	db8500_add_i2c1(&codina_i2c1_data);
-	db8500_add_i2c2(&codina_i2c2_data);
-	db8500_add_i2c3(&codina_i2c3_data);
+	int intrpt_gpio = SENSORS_INT_SKOMER_BRINGUP;
 
-	i2c_register_board_info(0,
-		ARRAY_AND_SIZE(codina_r0_0_i2c0_devices));
-	if (!use_ab8505_iddet)
-		i2c_register_board_info(1,
-			ARRAY_AND_SIZE(codina_r0_0_i2c1_devices));
+	gpio_request(intrpt_gpio,"mpu6050_input");
+	gpio_direction_input(intrpt_gpio);
+}
+#endif
+
+#if 0
+static void skomer_px3215_init(void)
+{
+	int intrpt_gpio = PS_INT_SKOMER_BRINGUP;
+
+	gpio_request(intrpt_gpio,"px3215");
+	gpio_direction_input(intrpt_gpio);
+}
+#endif
+
+static void __init skomer_i2c_init(void)
+{
+//	db8500_add_i2c0(&skomer_i2c0_data);
+	db8500_add_i2c1(&skomer_i2c1_data);
+	db8500_add_i2c2(&skomer_i2c2_data);
+	//db8500_add_i2c3(&skomer_i2c3_data);
+
+//	i2c_register_board_info(0,
+//		ARRAY_AND_SIZE(skomer_bringup_i2c0_devices));
+	
+	i2c_register_board_info(1,
+		ARRAY_AND_SIZE(skomer_bringup_i2c1_devices));
+	
 	i2c_register_board_info(2,
-		ARRAY_AND_SIZE(codina_r0_0_i2c2_devices));
+		ARRAY_AND_SIZE(skomer_bringup_i2c2_devices));
+	
+	platform_device_register(&skomer_gpio_i2c3_pdata);
 	i2c_register_board_info(3,
-		ARRAY_AND_SIZE(codina_r0_0_i2c3_devices));
-		platform_device_register(&codina_gpio_i2c4_pdata);
+	ARRAY_AND_SIZE(skomer_bringup_i2c3_devices));
+    
+	platform_device_register(&skomer_gpio_i2c4_pdata);
 	i2c_register_board_info(4,
-		ARRAY_AND_SIZE(codina_r0_0_gpio_i2c4_devices));
-	/*platform_device_register(&codina_gpio_i2c5_pdata);
+		ARRAY_AND_SIZE(skomer_bringup_gpio_i2c4_devices));
+
+	platform_device_register(&skomer_gpio_i2c5_pdata);
 	i2c_register_board_info(5,
-		ARRAY_AND_SIZE(codina_r0_0_gpio_i2c5_devices));*/
-	if	(system_rev >= CODINA_TMO_R0_1)	{
-		platform_device_register(&codina_gpio_i2c6_pdata_01);
-		i2c_register_board_info(6,
-		ARRAY_AND_SIZE(codina_r0_0_gpio_i2c6_devices_01));
-	}	else	{
-	platform_device_register(&codina_gpio_i2c6_pdata);
+		ARRAY_AND_SIZE(skomer_bringup_gpio_i2c5_devices));
+	
+	platform_device_register(&skomer_gpio_i2c6_pdata);
 	i2c_register_board_info(6,
-		ARRAY_AND_SIZE(codina_r0_0_gpio_i2c6_devices));
-	}
-	platform_device_register(&codina_gpio_i2c7_pdata);
+	ARRAY_AND_SIZE(skomer_bringup_gpio_i2c6_devices));
+	
+	platform_device_register(&skomer_gpio_i2c7_pdata);
 	i2c_register_board_info(7,
-		ARRAY_AND_SIZE(codina_r0_0_gpio_i2c7_devices));
-	if	(system_rev >= CODINA_TMO_R0_1)	{
-		platform_device_register(&codina_gpio_i2c8_pdata);
+		ARRAY_AND_SIZE(skomer_bringup_gpio_i2c7_devices));
+
+	platform_device_register(&skomer_gpio_i2c8_pdata);
 	i2c_register_board_info(8,
-		ARRAY_AND_SIZE(codina_r0_0_gpio_i2c8_devices));
-	}	else	{
-	i2c_register_board_info(4,
-		ARRAY_AND_SIZE(codina_r0_0_gpio_i2c4_devices_r0));
-	}
+		ARRAY_AND_SIZE(skomer_bringup_gpio_i2c8_devices));
+
+	platform_device_register(&skomer_gpio_i2c9_pdata);
+	i2c_register_board_info(9,
+		ARRAY_AND_SIZE(skomer_bringup_gpio_i2c9_devices));
 }
 
 #ifdef CONFIG_USB_ANDROID
@@ -2337,13 +2531,13 @@ static void fetch_usb_serial_no(int len)
 #endif
 
 
-static void __init codina_spi_init(void)
+static void __init skomer_spi_init(void)
 {
-	db8500_add_spi0(&codina_spi0_data);
+	db8500_add_spi0(&skomer_spi0_data);
 	spi_register_board_info(spi_board_info, ARRAY_SIZE(spi_board_info));
 }
 
-static void __init codina_uart_init(void)
+static void __init skomer_uart_init(void)
 {
 	db8500_add_uart0(&uart0_plat);
 	db8500_add_uart1(&uart1_plat);
@@ -2357,7 +2551,7 @@ static void __init u8500_cryp1_hash1_init(void)
 }
 
 
-static void __init codina_init_machine(void)
+static void __init skomer_init_machine(void)
 {
 	sec_common_init();
 
@@ -2378,64 +2572,39 @@ static void __init codina_init_machine(void)
 #endif
 	nmk_gpio_clocks_enable();
 
-	if (system_rev < CODINA_TMO_R0_4){
-		ab8505_platdata.regulator = &codina_ab8505_regulator_plat_data;
-#ifdef CONFIG_LEDS_CLASS
-		/*
-		 * Control Key backlight LEDs by turning
-		 * ON/OFF a gpio.
-		 */
-		platform_device_register(&codina_gpio_leds_device);
-#endif
-		codina_bl_platform_info.ctrl_gpio = LCD_BL_CTRL_CODINA_R0_0;
-	} else {
-		if (system_rev == CODINA_TMO_R0_4)
-			codina_ab8505_r0_4_regulator_plat_data
-				.regulator[AB8505_LDO_AUX4]
-				.constraints.valid_ops_mask = 0;
-
-		ab8505_platdata.regulator = &codina_ab8505_r0_4_regulator_plat_data;		
-#ifdef CONFIG_LEDS_CLASS
-#ifdef CONFIG_LEDS_REGULATOR
-		/*
-		 * Control Key backlight LEDs by turning
-		 * ON/OFF a regulator.
-		 */
-		platform_device_register(&codina_regulator_leds_device);
-#endif
-#endif
-		codina_bl_platform_info.ctrl_gpio = LCD_BL_CTRL_CODINA_R0_4;
-	}
-
 	platform_add_devices(platform_devs, ARRAY_SIZE(platform_devs));
 
 	ssg_pins_init();
 
-#ifdef CONFIG_TOUCHSCREEN_ZINITIX_BT404
-	bt404_ts_init();
+	u8500_cryp1_hash1_init();
+	skomer_i2c_init();
+	skomer_spi_init();
+	mop500_msp_init();		/* generic for now */
+	skomer_uart_init();
+
+#ifdef CONFIG_INPUT_MPU6050
+	skomer_mpu_init();
 #endif
 
-	u8500_cryp1_hash1_init();
-	codina_i2c_init();
-	codina_spi_init();
-	mop500_msp_init();		/* generic for now */
-	codina_uart_init();
+#if 0
+	skomer_px3215_init();
+#endif
 
 #ifdef CONFIG_STE_WLAN
 	mop500_wlan_init();
 #endif
 
 #ifdef CONFIG_KEYBOARD_GPIO
-	platform_device_register(&codina_gpio_keys_device);
+	if (system_rev == SKOMER_R0_2)
+        platform_device_register(&skomer_r02_gpio_keys_device);
+    else
+	platform_device_register(&skomer_gpio_keys_device);
 #endif
 
 #ifdef CONFIG_BATTERY_SAMSUNG
 	sec_init_battery();
 #endif
-	if (system_rev >= CODINA_TMO_R0_0)
-		platform_device_register(&ab8505_device);
-	else
-		platform_device_register(&ab8500_device);
+	platform_device_register(&ab8505_device);
 
 	sec_cam_init();
 
@@ -2444,8 +2613,29 @@ static void __init codina_init_machine(void)
 	/* This board has full regulator constraints */
 	regulator_has_full_constraints();
 
+#ifdef CONFIG_TOUCHSCREEN_TMA140
+      tma_init();
+#endif
+
+#ifdef CONFIG_KEYBOARD_NTS_TOUCHKEY
+	nts_touchkey_init();
+#endif
+
+#ifdef CONFIG_KEYBOARD_TC360_TOUCHKEY
+	tc360_init();
+#endif
 	nmk_gpio_clocks_disable();
+
 }
+
+static int __init set_hats_state(char *str)
+{
+	if (get_option(&str, &hats_state) != 1)
+		hats_state = 0;
+
+	return 1;
+}
+__setup("hats_flag=", set_hats_state);
 
 static int __init jig_smd_status(char *str)
 {
@@ -2474,76 +2664,62 @@ static int __init board_id_setup(char *str)
 	if (get_option(&str, &board_id) != 1)
 		board_id = 0;
 
-	use_ab8505_iddet = (board_id >= CODINA_TMO_AB8505_IDDET_VER) ? 1 : 0;
+	use_ab8505_iddet = 1; //(board_id >= SKOMER_AB8505_IDDET_VER) ? 1 : 0;
 
 	switch (board_id) {
-	case 7:
-		printk(KERN_INFO "GT-I8160 Board Rev 0.0\n");
-		system_rev = CODINA_R0_0;
+	case 0x0101:
+		printk(KERN_INFO "SKOMER Board for Rev0.0\n");
+		system_rev = SKOMER_R0_0;
 		break;
-	case 8:
-		printk(KERN_INFO "GT-I8160 Board Rev 0.1\n");
-		system_rev = CODINA_R0_1;
+	case 0x0102:
+		printk(KERN_INFO "SKOMER Board for Rev0.1\n");
+		system_rev = SKOMER_R0_1;
 		break;
-	case 9:
-		printk(KERN_INFO "GT-I8160 Board Rev 0.2\n");
-		system_rev = CODINA_R0_2;
+	case 0x0103:
+		printk(KERN_INFO "SKOMER Board for Rev0.2\n");
+		system_rev = SKOMER_R0_2;
 		break;
-	case 10:
-		printk(KERN_INFO "GT-I8160 Board Rev 0.3\n");
-		system_rev = CODINA_R0_3;
+	case 0x0104:
+		printk(KERN_INFO "SKOMER Board for Rev0.3\n");
+		system_rev = SKOMER_R0_3;
 		break;
-	case 11:
-		printk(KERN_INFO "GT-I8160 Board Rev 0.4\n");
-		system_rev = CODINA_R0_4;
+	case 0x0105:
+		printk(KERN_INFO "SKOMER Board for Rev0.4\n");
+		system_rev = SKOMER_R0_4;
 		break;
-	case 12:
-		printk(KERN_INFO "GT-I8160 Board Rev 0.5\n");
-		system_rev = CODINA_R0_5;
-		break;
-	case 0x101:
-		printk(KERN_INFO "SGH-T599 Board pre-Rev 0.0\n");
-		system_rev = CODINA_TMO_R0_0;
-		break;
-	case 0x102:
-		printk(KERN_INFO "SGH-T599 Board Rev 0.0\n");
-		system_rev = CODINA_TMO_R0_0_A;
-		break;
-	case 0x103:
-		printk(KERN_INFO "SGH-T599 Board Rev 0.1\n");
-		system_rev = CODINA_TMO_R0_1;
-		break;
-	case 0x104:
-		printk(KERN_INFO "SGH-T599 Board Rev 0.2\n");
-		system_rev = CODINA_TMO_R0_2;
-		break;
-	case 0x105:
-		printk(KERN_INFO "SGH-T599 Board Rev 0.4\n");
-		system_rev = CODINA_TMO_R0_4;
-		break;
-	case 0x106:
-		printk(KERN_INFO "SGH-T599 Board Rev 0.6\n");
-		system_rev = CODINA_TMO_R0_6;
-		break;
-	case 0x107:
-		printk(KERN_INFO "SGH-T599 Board Rev 0.7\n");
-		system_rev = CODINA_TMO_R0_7;
-		break;
+	case 0x0106:
+		printk(KERN_INFO "SKOMER Board for Rev0.5\n");
+		system_rev = SKOMER_R0_5;
+		break;				
+	case 0x0107:
+		printk(KERN_INFO "SKOMER Board for Rev0.6\n");
+		system_rev = SKOMER_R0_6;
+		break;	
+	case 0x0108:
+		printk(KERN_INFO "SKOMER Board for Rev0.7\n");
+		system_rev = SKOMER_R0_7;
+		break;	
+	case 0x0109:
+		printk(KERN_INFO "SKOMER Board for Rev0.8\n");
+		system_rev = SKOMER_R0_8;
+		break;	
 	default:
 		printk(KERN_INFO "Unknown board_id=%c\n", *str);
+		system_rev = SKOMER_R0_0;
 		break;
 	};
 
 	return 1;
 }
+
 __setup("board_id=", board_id_setup);
 
-MACHINE_START(CODINA, "SAMSUNG CODINA")
+MACHINE_START(SEC_SKOMER, "SAMSUNG SKOMER")
 	/* Maintainer: SAMSUNG based on ST Ericsson */
 	.boot_params	= 0x100,
 	.map_io		= u8500_map_io,
 	.init_irq	= ux500_init_irq,
 	.timer		= &ux500_timer,
-	.init_machine	= codina_init_machine,
+	.init_machine	= skomer_init_machine,
 	.restart	= ux500_restart,
 MACHINE_END

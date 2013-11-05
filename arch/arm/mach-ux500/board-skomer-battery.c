@@ -20,12 +20,11 @@
 #define SEC_CHARGER_IRQ IRQ_EINT(1)
 
 bool power_off_charging;
-EXPORT_SYMBOL(power_off_charging);
 struct notifier_block cable_nb;
 struct notifier_block cable_accessory_nb;
 extern int micro_usb_register_notifier(struct notifier_block *nb);
 extern int micro_usb_register_usb_notifier(struct notifier_block *nb);
-extern void usb_switch_register_notify(struct notifier_block *nb);
+//extern void usb_switch_register_notify(struct notifier_block *nb);
 extern unsigned int board_id;
 extern int use_ab8505_iddet;
 bool vbus_state;
@@ -149,8 +148,8 @@ static bool sec_bat_adc_ap_exit(void) {return true; }
 static int sec_bat_adc_ap_read(unsigned int channel)
 {
 	int adc;
-
-	switch (channel) {
+	
+	switch(channel) {
 	case SEC_BAT_ADC_CHANNEL_TEMP:
 	case SEC_BAT_ADC_CHANNEL_TEMP_AMBIENT:
 		adc = ab8500_gpadc_read_raw(
@@ -161,7 +160,7 @@ static int sec_bat_adc_ap_read(unsigned int channel)
 		adc = ab8500_gpadc_convert(
 			ab8500_gpadc_get(), USB_CHARGER_C);
 		break;
-	default:
+	default :
 		return -1;
 		break;
 	}
@@ -237,7 +236,7 @@ static int sec_bat_check_cable_callback(void)
  * return : bool
  * true - battery detected, false battery NOT detected
  */
-static bool sec_bat_check_callback(void) {return true; }
+static bool sec_bat_check_callback(void) {return true;}
 
 static bool sec_bat_check_cable_result_callback(
 				int cable_type)
@@ -266,28 +265,21 @@ static bool sec_bat_ovp_uvlo_result_callback(int health) {return true; }
  */
 static bool sec_bat_get_temperature_callback(
 				enum power_supply_property psp,
-			    union power_supply_propval *val) {return true; }
+			    union power_supply_propval *val){return true;}
 
-static bool sec_fg_fuelalert_process(bool is_fuel_alerted) {return true; }
+static bool sec_fg_fuelalert_process(bool is_fuel_alerted){return true;}
 
 static const int temp_table[][2] = {
-	{40,	700},
-	{48,	650},
-	{57,	600},
-	{69,	550},
+	{42,	700},
+	{55,	600},
 	{83,	500},
-	{101,	450},
-	{123,	400},
-	{149,	350},
-	{181,	300},
-	{220,	250},
-	{266,	200},
-	{321,	150},
-	{385,	100},
-	{459,	50},
-	{542,	0},
-	{634,	-50},
-	{729,	-100},
+	{119,	400},
+	{174,	300},
+	{250,	200},
+	{360,	100},
+	{507,	0},
+	{685,	-100},
+	{873,	-200},
 };
 
 
@@ -310,11 +302,11 @@ static sec_charging_current_t charging_current_table[] = {
 	{0,	0,	0,	0},
 	{0,	0,	0,	0},
 	{0,	0,	0,	0},
-	{700,	1500,	195,	40 * 60}, /* POWER_SUPPLY_TYPE_MAINS */
-	{500,	500,	195,	40 * 60}, /* POWER_SUPPLY_TYPE_USB */
-	{700,	1500,	195,	40 * 60}, /* POWER_SUPPLY_TYPE_DCP */
-	{500,	500,	195,	40 * 60}, /* POWER_SUPPLY_TYPE_CDP */
-	{500,	500,	195,	40 * 60},   /* POWER_SUPPLY_TYPE_ACA */
+	{1000,	1500,	185,	120}, /* POWER_SUPPLY_TYPE_MAINS */
+	{500,	500,	185,	120}, /* POWER_SUPPLY_TYPE_USB */
+	{1000,	1500,	185,	120}, /* POWER_SUPPLY_TYPE_DCP */
+	{500,	500,	185,	120}, /* POWER_SUPPLY_TYPE_CDP */
+	{500,	500,	185,	120},   /* POWER_SUPPLY_TYPE_ACA */
 	{0,	0,	0,	0},
 	{0,	0,	0,	0},
 	{0,	0,	0,	0},
@@ -326,11 +318,11 @@ static sec_charging_current_t charging_current_recharging_table[] = {
 	{0,	0,	0,	0},
 	{0,	0,	0,	0},
 	{0,	0,	0,	0},
-	{700,	700,	185,	90}, /* POWER_SUPPLY_TYPE_MAINS */
-	{500,	500,	185,	90}, /* POWER_SUPPLY_TYPE_USB */
-	{700,	1500,	185,	90}, /* POWER_SUPPLY_TYPE_DCP */
-	{500,	500,	185,	90}, /* POWER_SUPPLY_TYPE_CDP */
-	{500,	500,	185,	90},   /* POWER_SUPPLY_TYPE_ACA */
+	{1000,	1500,	185,	120}, /* POWER_SUPPLY_TYPE_MAINS */
+	{500,	500,	185,	120}, /* POWER_SUPPLY_TYPE_USB */
+	{1000,	1500,	185,	120}, /* POWER_SUPPLY_TYPE_DCP */
+	{500,	500,	185,	120}, /* POWER_SUPPLY_TYPE_CDP */
+	{500,	500,	185,	120},   /* POWER_SUPPLY_TYPE_ACA */
 	{0,	0,	0,	0},
 	{0,	0,	0,	0},
 	{0,	0,	0,	0},
@@ -376,149 +368,97 @@ static struct v_to_cap cap_tbl[] = {
 };
 
 static struct v_to_cap cap_tbl_5ma[] = {
-	{4328,	100},
-	{4299,	99},
-	{4281,	98},
-	{4241,	95},
-	{4183,	90},
-	{4150,	87},
-	{4116,	84},
-	{4077,	80},
-	{4068,	79},
-	{4058,	77},
-	{4026,	75},
-	{3987,	72},
-	{3974,	69},
-	{3953,	66},
-	{3933,	63},
-	{3911,	60},
-	{3900,	58},
-	{3873,	55},
-	{3842,	52},
-	{3829,	50},
-	{3810,	45},
-	{3793,	40},
-	{3783,	35},
-	{3776,	30},
-	{3762,	25},
-	{3746,	20},
-	{3739,	18},
-	{3715,	15},
-	{3700,	12},
-	{3690,	10},
-	{3680,	9},
-	{3670,	7},
-	{3656,	5},
-	{3634,	4},
-	{3614,	3},
-	{3551,	2},
-	{3458,	1},
-	{3300,	0},
+    {4330,  100},
+    {4320,	99}, 
+	{4283, 95},
+	{4246, 92},
+	{4211, 89},
+	{4167, 85},
+	{4146, 83},
+	{4124, 81},
+	{4062, 75},
+	{4013, 70},
+	{3977, 66},
+	{3931, 60},
+	{3914, 58},
+	{3901, 57},
+	{3884, 56},
+	{3870, 55},
+	{3862, 54},
+	{3854, 53},
+	{3838, 50},
+	{3823, 47},
+	{3813, 45},
+	{3807, 43},
+	{3800, 41},
+	{3795, 40},
+	{3786, 37},
+	{3783, 35},
+	{3773, 30},
+	{3758, 25},
+	{3745, 22},
+	{3738, 20},
+	{3733, 19},
+	{3716, 17},
+	{3709, 16},
+	{3698, 15},
+	{3687, 14},
+	{3684, 13},
+	{3684, 12},
+	{3678, 10},
+	{3671,   9},
+	{3665,   8},
+	{3651,   7},
+	{3634,   6},
+	{3601,   5},
+	{3564,   4},
+	{3516,   3},
+	{3456,   2},
+	{3381,   1},
+	{3300,   0},
 };
 
 /* Battery voltage to Resistance table*/
 static struct v_to_res res_tbl[] = {
-	{4240,	160},
-	{4210,	179},
-	{4180,	183},
-	{4160,	184},
-	{4140,	191},
-	{4120,	204},
-	{4080,	200},
-	{4027,	202},
-	{3916,	221},
-	{3842,	259},
-	{3800,	262},
-	{3742,	263},
-	{3709,	277},
-	{3685,	312},
-	{3668,	258},
-	{3660,	247},
-	{3636,	293},
-	{3616,	331},
-	{3600,	349},
-	{3593,	345},
-	{3585,	344},
-	{3572,	336},
-	{3553,	321},
-	{3517,	336},
-	{3503,	322},
-	{3400,	269},
-	{3360,	328},
-	{3330,	305},
-	{3300,	339},
+	{4240,	160},	
+	{4210,	179},	
+	{4180,	183},	
+	{4160,	184},	
+	{4140,	191},	
+	{4120,	204},	
+	{4080,	200},	
+	{4027,	202},	
+	{3916,	221},	
+	{3842,	259},	
+	{3800,	262},	
+	{3715,	340},	
+	{3700,	300},	
+	{3682,  233},		
+	{3655,  246},		
+	{3639,  260},		
+	{3621,  254},		
+	{3583,  266},		
+	{3536,  274},		
+	{3502,  300},		
+	{3465,  245},		
+	{3438,  225},		
+	{3330,	305},	
+	{3300,	339},	
 };
 
 static struct v_to_res chg_res_tbl[] = {
-	{4345, 230},
-	{4329, 238},
-	{4314, 225},
-	{4311, 239},
-	{4294, 235},
-	{4264, 229},
-	{4262, 228},
-	{4252, 236},
-	{4244, 234},
-	{4235, 234},
-	{4227, 238},
-	{4219, 242},
-	{4212, 239},
-	{4206, 231},
-	{4201, 231},
-	{4192, 224},
-	{4184, 238},
-	{4173, 245},
-	{4161, 244},
-	{4146, 244},
-	{4127, 228},
-	{4119, 218},
-	{4112, 215},
-	{4108, 209},
-	{4102, 214},
-	{4096, 215},
-	{4090, 215},
-	{4083, 219},
-	{4078, 208},
-	{4071, 205},
-	{4066, 208},
-	{4061, 210},
-	{4055, 212},
-	{4049, 215},
-	{4042, 212},
-	{4032, 217},
-	{4027, 220},
-	{4020, 210},
-	{4013, 214},
-	{4007, 219},
-	{4003, 229},
-	{3996, 246},
-	{3990, 245},
-	{3984, 242},
-	{3977, 236},
-	{3971, 231},
-	{3966, 229},
-	{3952, 226},
-	{3946, 222},
-	{3941, 222},
-	{3936, 217},
-	{3932, 217},
-	{3928, 212},
-	{3926, 214},
-	{3922, 209},
-	{3917, 215},
-	{3914, 212},
-	{3912, 220},
-	{3910, 226},
-	{3903, 226},
-	{3891, 222},
-	{3871, 221},
-	{3857, 219},
-	{3850, 216},
-	{3843, 212},
-	{3835, 206},
-	{3825, 217},
-	{3824, 220},
-	{3820, 237},
+	{4302, 200},
+	{4258, 206},
+	{4200, 231},
+	{4150, 198},
+	{4134, 268},
+	{4058, 172},
+	{4003, 227},
+	{3972, 241},
+	{3953, 244},
+	{3950, 213},
+	{3900, 225},
+	{3850, 212},
 	{3800, 232},
 	{3750, 177},
 	{3712, 164},
@@ -543,7 +483,7 @@ static const struct fg_parameters fg = {
 	.maint_thres = 97,
 #ifdef CONFIG_AB8505_SMPL
 	.pcut_enable = 1,
-	.pcut_max_time = 15,		/* 10 * 15.625ms */
+	.pcut_max_time = 20,		/* 10 * 15.625ms */
 	.pcut_max_restart = 15,		/* Unlimited */
 	.pcut_debounce_time = 2,	/* 15.625 ms */
 #endif
@@ -553,14 +493,14 @@ static const struct chg_parameters chg = {
 	.volt_ovp = 6775,
 	.volt_ovp_recovery = 6900,
 };
-
-static struct battery_info battery_info = {
-	.charge_full_design = 1500,
+       
+static const struct battery_info battery_info = {
+	.charge_full_design = 1700,
 	.nominal_voltage = 3820,
-	.resis_high = 14100,
+	.resis_high = 7990,
 	.resis_low = 0,
 	.battery_resistance = 100,
-	.line_impedance = 36,
+	.line_impedance = 16,
 	.battery_resistance_for_charging = 200,
 	.n_v_cap_tbl_elements = ARRAY_SIZE(cap_tbl_5ma),
 	.v_to_cap_tbl = cap_tbl_5ma,
@@ -585,11 +525,11 @@ static struct battery_data_t abb_battery_data[] = {
 		.enable_overshoot = false,
 		.bkup_bat_v = BUP_VCH_SEL_2P5V,
 		.bkup_bat_i = BUP_ICH_SEL_50UA,
-
-		.fg_res_chg = 125,
-		.fg_res_dischg = 130,
+		
+		.fg_res_chg = 143,
+		.fg_res_dischg = 143,
 		.lowbat_zero_voltage = 3320,
-
+		
 		.abb_set_vbus_state = abb_vbus_is_detected,
 		.abb_set_cable_state = abb_change_cable_state,
 		.bat_info = &battery_info,
@@ -674,7 +614,7 @@ sec_battery_platform_data_t sec_battery_pdata = {
 		SEC_BATTERY_CABLE_SOURCE_EXTERNAL |
 		SEC_BATTERY_CABLE_SOURCE_CALLBACK,
 
-	.event_check = true,
+	.event_check = false,
 	.event_waiting_time = 600,
 
 	/* Monitor setting */
@@ -702,21 +642,21 @@ sec_battery_platform_data_t sec_battery_pdata = {
 
 	.temp_check_type = SEC_BATTERY_TEMP_CHECK_TEMP,
 	.temp_check_count = 2,
-	.temp_high_threshold_event = 620,
-	.temp_high_recovery_event = 400,
+	.temp_high_threshold_event = 650,
+	.temp_high_recovery_event = 415,
 	.temp_low_threshold_event = -30,
 	.temp_low_recovery_event = 0,
-	.temp_high_threshold_normal = 470,
+	.temp_high_threshold_normal = 600,
 	.temp_high_recovery_normal = 400,
-	.temp_low_threshold_normal = -30,
+	.temp_low_threshold_normal = -50,
 	.temp_low_recovery_normal = 0,
-	.temp_high_threshold_lpm = 450,
-	.temp_high_recovery_lpm = 430,
-	.temp_low_threshold_lpm = -40,
-	.temp_low_recovery_lpm = -10,
+	.temp_high_threshold_lpm = 600,
+	.temp_high_recovery_lpm = 400,
+	.temp_low_threshold_lpm = -50,
+	.temp_low_recovery_lpm = 0,
 
 	.full_check_type = SEC_BATTERY_FULLCHARGED_ADC,
-	.full_check_type_2nd = SEC_BATTERY_FULLCHARGED_TIME,
+	.full_check_type_2nd = SEC_BATTERY_FULLCHARGED_ADC,
 	.full_check_type_recharge = SEC_BATTERY_FULLCHARGED_ADC,
 	.full_check_count = 3,
 	.chg_gpio_full_check = 0,
@@ -731,10 +671,10 @@ sec_battery_platform_data_t sec_battery_pdata = {
 	.recharge_condition_type =
 		SEC_BATTERY_RECHARGE_CONDITION_VCELL,
 	.recharge_condition_soc = 98,
-	.recharge_condition_vcell = 4270,
-	.recharge_check_count = 3,
+	.recharge_condition_vcell = 4300,
+	.recharge_check_count = 0,
 
-	.charging_total_time = 5 * 60 * 60,
+	.charging_total_time = 6 * 60 * 60,
 	.recharging_total_time = 90 * 60,
 
 	/* Fuel Gauge */
@@ -820,7 +760,7 @@ static int muic_accessory_notify(struct notifier_block *self,
 
 	return NOTIFY_OK;
 }
-
+		
 static int muic_notify(struct notifier_block *self,
 			       unsigned long action, void *dev)
 {
@@ -853,7 +793,7 @@ static int muic_notify(struct notifier_block *self,
 			case    OFF_OR_NOT_CONFIGURED:
 				abb_battery_cb();
 				break;
-			default:
+			default :
 				break;
 
 			}
@@ -875,7 +815,7 @@ static int muic_notify(struct notifier_block *self,
 				if (vbus_state)
 					abb_jig_charging();
 				break;
-			default:
+			default :
 				break;
 			}
 		}
@@ -888,16 +828,12 @@ void __init sec_init_battery(void)
 	cable_nb.notifier_call = muic_notify;
 	cable_accessory_nb.notifier_call = muic_accessory_notify;
 
-	if (board_id < 0x103) {
-		battery_info.resis_high = 100000;
-		battery_info.resis_low = 64000;
-	}
-
-	if (use_ab8505_iddet) {
+	if (use_ab8505_iddet){
 		micro_usb_register_usb_notifier(&cable_nb);
 		micro_usb_register_notifier(&cable_accessory_nb);
 	} else
-		usb_switch_register_notify(&cable_nb);
+		//usb_switch_register_notify(&cable_nb);
+		;
 
 	platform_device_register(&sec_device_battery);
 }

@@ -223,6 +223,7 @@ static __init int setup_boot_mode(char *opt)
 
 __setup("bootmode=", setup_boot_mode);
 
+#if defined(CONFIG_MACH_JANICE_CHN) || defined (CONFIG_MACH_GAVINI) || defined (CONFIG_MACH_CODINA_CHN) || defined (CONFIG_MACH_GAVINI_CHN)
 u32 sec_lpm_bootmode;
 EXPORT_SYMBOL(sec_lpm_bootmode);
 
@@ -233,6 +234,7 @@ static __init int setup_lpm_boot_mode(char *opt)
 }
 
 __setup("lpm_boot=", setup_lpm_boot_mode);
+#endif
 
 u32 sec_dbug_level;
 EXPORT_SYMBOL(sec_dbug_level);
@@ -264,6 +266,7 @@ __setup("set_default_param=", setup_default_param);
 static struct device *sec_checksum;
 static unsigned int sec_checksum_pass;
 static unsigned int sec_checksum_done;
+
 
 static __init int setup_checksum_pass(char *str)
 {
@@ -927,9 +930,9 @@ unsigned short sec_common_update_reboot_reason(char mode, const char *cmd)
 		reason = REBOOTMODE_DOWNLOAD;
 		break;
 	default:		/* reboot mode = normal */
-		reason = REBOOTMODE_NORMAL;
-		break;
-	}
+                reason = REBOOTMODE_NORMAL;
+                break;
+        }
 
 #if defined(CONFIG_ARCH_OMAP3) || defined(CONFIG_ARCH_OMAP4)
 		omap_writel(scpad | reason, scpad_addr);
@@ -1192,6 +1195,11 @@ static inline int wait_for_key_press(void)
 			key = SEC_VOL_DOWN_PRESSED;
 		else if (!gpio_get_value(VOL_UP_GOLDEN_BRINGUP))
 			key = SEC_VOL_UP_PRESSED;
+#elif defined(CONFIG_MACH_SEC_SKOMER)
+		if (!gpio_get_value(VOL_DOWN_GOLDEN_BRINGUP))
+			key = SEC_VOL_DOWN_PRESSED;
+		else if (!gpio_get_value(VOL_UP_GOLDEN_BRINGUP))
+			key = SEC_VOL_UP_PRESSED;		
 #elif defined(CONFIG_MACH_SEC_KYLE)
 		if (!gpio_get_value(KYLE_GPIO_VOL_DOWN_KEY))
 			key = SEC_VOL_DOWN_PRESSED;

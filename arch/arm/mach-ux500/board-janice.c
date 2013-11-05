@@ -163,8 +163,6 @@ struct yas_platform_data yas_data = {
 
 #if defined(CONFIG_MPU_SENSORS_MPU3050)
 
-#define SENSOR_MPU_NAME "mpu3050"
-
 static struct mpu3050_platform_data mpu_data = {
 	.int_config  = 0x12,
 	.orientation = {
@@ -466,8 +464,8 @@ static struct usb_switch fsa880_data =	{
 		.connection_changed_interrupt_gpio	=	95	,
 		.charger_detect_gpio			=	0xffff 	, /*no charger detect gpio for this device*/
 		.valid_device_register_1_bits		=	0x74	,
-		.valid_device_register_2_bits		=	0x8F	,	
-		.valid_registers			=	{0,1,1,1,1,0,0,1,0,0,1,1,0,0,0,0, 0, 0, 0, 1, 1  },
+		.valid_device_register_2_bits		=	0xCF	,	
+		.valid_registers			=	{0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1},
 };
 #endif
 
@@ -573,7 +571,7 @@ static const u8 *mxt224_config[] = {
 /*
 	Configuration for MXT224-E
 */
-#define MXT224E_THRESHOLD_BATT		25
+#define MXT224E_THRESHOLD_BATT		22
 #define MXT224E_THRESHOLD_CHRG		25
 #define MXT224E_CALCFG_BATT		0x72 //114
 #define MXT224E_CALCFG_CHRG		0x72 
@@ -584,7 +582,7 @@ static u8 t7_config_e[] = {GEN_POWERCONFIG_T7,
 				48, 255, 25};
 
 static u8 t8_config_e[] = {GEN_ACQUISITIONCONFIG_T8,
-				27, 0, 5, 1, 0, 0, 4, 35, MXT224E_ATCHFRCCALTHR_NORMAL, MXT224E_ATCHFRCCALRATIO_NORMAL};
+				22, 0, 5, 1, 0, 0, 4, 35, MXT224E_ATCHFRCCALTHR_NORMAL, MXT224E_ATCHFRCCALRATIO_NORMAL};
 
 #if defined(CONFIG_MACH_T1_CHN)
 static u8 t9_config_e[] = {TOUCH_MULTITOUCHSCREEN_T9,
@@ -623,22 +621,22 @@ static u8 t42_config_e[] = {PROCI_TOUCHSUPPRESSION_T42,
 				0, 0, 0, 0, 0, 0, 0, 0};
 
 static u8 t46_config_e[] = {SPT_CTECONFIG_T46,
-				0, 3, 24, 30, 0, 0, 1, 0};
-
+				0, 3, 20, 30, 0, 0, 1, 0};
+                            
 static u8 t47_config_e[] = {PROCI_STYLUS_T47,
 				0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 static u8 t48_config_e[] = {PROCG_NOISESUPPRESSION_T48,
-				3, 132, MXT224E_CALCFG_BATT, 0, 0, 0, 0, 0, 10, 20, 0, 0, 0,
-				6,	6, 0, 0, 48, 4, 48, 10, 0, 7, 5, 0, 14, 0, 5,
-				0, 0, 0, 0, 0, 0, 0, MXT224E_THRESHOLD_BATT, 2, 3, 1, 47, MXT224_MAX_MT_FINGERS, 5, 40, 235, 235,
+				3, 132, MXT224E_CALCFG_BATT, 24, 0, 0, 0, 0, 1, 2, 0, 0, 0,
+				6,	6, 0, 0, 48, 4, 48, 10, 0, 100, 5, 0, 100, 0, 5,
+				0, 0, 0, 0, 0, 0, 0, MXT224E_THRESHOLD_BATT, 2, 3, 1, 81, MXT224_MAX_MT_FINGERS, 5, 40, 235, 235,
 				10, 10, 170, 50, 143, 80, 18, 15, 0 };
 
 static u8 t48_config_chrg_e[] = {PROCG_NOISESUPPRESSION_T48,
 				3, 132, MXT224E_CALCFG_CHRG, 0, 0, 0, 0, 0, 10, 20, 0, 0, 0,
 				6,	6, 0, 0, 64, 4, 64, 10,
 				0, 10, 5, 0, 15, 0, 20,
-				0, 0, 0, 0, 0, 0, 0, MXT224E_THRESHOLD_CHRG, 2, 5, 2, 47, MXT224_MAX_MT_FINGERS, 5, 40, 235, 235,
+				0, 0, 0, 0, 0, 0, 0, MXT224E_THRESHOLD_CHRG, 2, 5, 2, 81, MXT224_MAX_MT_FINGERS, 5, 40, 235, 235,
 				10, 10, 170, 50, 143, 80, 18, 15, 0 };
 
 static u8 end_config_e[] = {RESERVED_T255};
@@ -666,6 +664,7 @@ static struct mxt224_platform_data mxt224_data = {
 	.gpio_read_done = TSP_INT_JANICE_R0_0,
 	.config = mxt224_config,
 	.config_e = mxt224e_config,
+	.config_fw_version = "I9070_At_1211",
 	.min_x = 0,
 	.max_x = 480,
 	.min_y = 0,
@@ -902,7 +901,7 @@ static struct platform_device janice_gpio_i2c8_pdata = {
 static struct i2c_board_info __initdata janice_r0_0_gpio_i2c8_devices[] = {
 #if defined(CONFIG_MPU_SENSORS_MPU3050)
 		{
-			I2C_BOARD_INFO(MPU_NAME, DEFAULT_MPU_SLAVEADDR),
+			I2C_BOARD_INFO(MPU_DEV, DEFAULT_MPU_SLAVEADDR),
 			.irq = GPIO_TO_IRQ(SENSOR_INT_JANICE_R0_0),
 			.platform_data = &mpu_data_janice_r00,
 		},
@@ -912,7 +911,7 @@ static struct i2c_board_info __initdata janice_r0_0_gpio_i2c8_devices[] = {
 static struct i2c_board_info __initdata janice_r0_1_gpio_i2c8_devices[] = {
 #if defined(CONFIG_MPU_SENSORS_MPU3050)
 		{
-			I2C_BOARD_INFO(MPU_NAME, DEFAULT_MPU_SLAVEADDR),
+			I2C_BOARD_INFO(MPU_DEV, DEFAULT_MPU_SLAVEADDR),
 			.irq = GPIO_TO_IRQ(SENSOR_INT_JANICE_R0_0),
 			.platform_data = &mpu_data_janice_r01,
 		},
@@ -922,7 +921,7 @@ static struct i2c_board_info __initdata janice_r0_1_gpio_i2c8_devices[] = {
 static struct i2c_board_info __initdata janice_r0_2_gpio_i2c8_devices[] = {
 #if defined(CONFIG_MPU_SENSORS_MPU3050)
 		{
-			I2C_BOARD_INFO(MPU_NAME, DEFAULT_MPU_SLAVEADDR),
+			I2C_BOARD_INFO(MPU_DEV, DEFAULT_MPU_SLAVEADDR),
 			.irq = GPIO_TO_IRQ(SENSOR_INT_JANICE_R0_0),
 			.platform_data = &mpu_data_janice_r02,
 		},
@@ -1504,6 +1503,7 @@ static struct ab8500_gpio_platform_data ab8500_gpio_pdata = {
 	.config_pullups		= {0xE0, 0x1F, 0x00, 0x00, 0x80, 0x00},
 };
 
+
 static struct ab8500_sysctrl_platform_data ab8500_sysctrl_pdata = {
 	/*
 	 * SysClkReq1RfClkBuf - SysClkReq8RfClkBuf
@@ -1568,21 +1568,21 @@ static struct sec_jack_zone sec_jack_zones[] = {
 /* to support 3-buttons earjack */
 static struct sec_jack_buttons_zone sec_jack_buttons_zones[] = {
 	{
-		/* 0 <= adc <=82, stable zone */
+		/* 0 <= adc <=95, stable zone */
 		.code		= KEY_MEDIA,
 		.adc_low	= 0,
-		.adc_high	= 82,
+		.adc_high	= 95,
 	},
 	{
-		/* 83 <= adc <= 180, stable zone */
+		/* 96 <= adc <= 215, stable zone */
 		.code		= KEY_VOLUMEUP,
-		.adc_low	= 83,
-		.adc_high	= 180,
+		.adc_low	= 96,
+		.adc_high	= 215,
 	},
 	{
-		/* 181 <= adc <= 450, stable zone */
+		/* 216 <= adc <= 450, stable zone */
 		.code		= KEY_VOLUMEDOWN,
-		.adc_low	= 181,
+		.adc_low	= 216,
 		.adc_high	= 450,
 	},
 };
@@ -1599,26 +1599,26 @@ static void sec_jack_mach_init(struct platform_device *pdev)
 	/* initialise threshold for ACCDETECT1 comparator
 	 * and the debounce for all ACCDETECT comparators */
 	ret = abx500_set_register_interruptible(&pdev->dev, AB8500_ECI_AV_ACC,
-		0x80, 0x31);
+						0x80, 0x31);
 	if (ret < 0)
-		pr_err("%s: ab8500 write failed\n",__func__);
+		pr_err("%s: ab8500 write failed\n", __func__);
 
 	/* initialise threshold for ACCDETECT2 comparator1 and comparator2 */
 	ret = abx500_set_register_interruptible(&pdev->dev, AB8500_ECI_AV_ACC,
-		0x81, 0xB3);
+						0x81, 0xB3);
 	if (ret < 0)
-		pr_err("%s: ab8500 write failed\n",__func__);
+		pr_err("%s: ab8500 write failed\n", __func__);
 
 	ret = abx500_set_register_interruptible(&pdev->dev, AB8500_ECI_AV_ACC,
-		0x82, 0x33);
-
+						0x82, 0x33); //KSND
 	if (ret < 0)
-		pr_err("%s: ab8500 write failed\n",__func__);
+		pr_err("%s: ab8500 write failed\n", __func__);
 
 	/* set output polarity to Gnd when VAMIC1 is disabled */
-	ret = abx500_set_register_interruptible(&pdev->dev, AB8500_REGU_CTRL1, 0x84, 0x1);
+	ret = abx500_set_register_interruptible(&pdev->dev, AB8500_REGU_CTRL1,
+						0x84, 0x1);
 	if (ret < 0)
-		pr_err("%s: ab8500 write failed\n",__func__);
+		pr_err("%s: ab8500 write failed\n", __func__);
 }
 
 int sec_jack_get_det_level(struct platform_device *pdev)
@@ -1626,8 +1626,11 @@ int sec_jack_get_det_level(struct platform_device *pdev)
 	u8 value = 0;
 	int ret = 0;
 
-	abx500_get_register_interruptible(&pdev->dev, AB8500_INTERRUPT, 0x4,
+	ret = abx500_get_register_interruptible(&pdev->dev, AB8500_INTERRUPT, 0x4,
 		&value);
+	if (ret < 0)
+		return ret;
+
 	ret = (value & 0x04) >> 2;
 	pr_info("%s: ret=%x\n", __func__, ret);
 
@@ -1646,7 +1649,10 @@ struct sec_jack_platform_data sec_jack_pdata = {
 	.det_f = "ACC_DETECT_1DB_F",
 	.buttons_r = "ACC_DETECT_21DB_R",
 	.buttons_f = "ACC_DETECT_21DB_F",
-	.regulator_mic_source = "v-amic1"
+	.regulator_mic_source = "v-amic1",
+#ifdef CONFIG_SAMSUNG_JACK_SW_WATERPROOF
+	.ear_reselector_zone    = 1650,
+#endif
 };
 #endif
 
@@ -2089,6 +2095,7 @@ static void __init janice_init_machine(void)
 #ifdef CONFIG_USB_ANDROID
 	fetch_usb_serial_no(USB_SERIAL_NUMBER_LEN);
 #endif
+	nmk_gpio_clocks_enable();
 
 	platform_add_devices(platform_devs, ARRAY_SIZE(platform_devs));
 
@@ -2116,6 +2123,8 @@ static void __init janice_init_machine(void)
 	regulator_has_full_constraints();
 
 	sec_common_init_post() ;
+
+	nmk_gpio_clocks_disable();
 }
 
 static int __init  jig_smd_status(char *str)

@@ -16,6 +16,7 @@
 #include <linux/clk.h>
 #include <mach/devices.h>
 #include <linux/delay.h>
+#include <linux/regulator/consumer.h>
 #include <mach/board-sec-ux500.h>
 #include <video/mcde_display.h>
 #include <video/mcde_display-sec-dsi.h>
@@ -43,12 +44,13 @@
 /* Based on PLL DDR Freq at 798,72 MHz */
 #define HDMI_FREQ_HZ			33280000
 #define TV_FREQ_HZ			38400000
-#define DSI_HS_FREQ_HZ_HVA40WV1		420160000
+#define DSI_HS_FREQ_HZ_HVA40WV1		349440000
 #define DSI_HS_FREQ_HZ_NT35512		349440000
 #define DSI_LP_FREQ_HZ			19200000
 
 #define DSI_PLL_FREQ_HZ_HVA40WV1	(DSI_HS_FREQ_HZ_HVA40WV1 * 2)
 #define DSI_PLL_FREQ_HZ_NT35512		(DSI_HS_FREQ_HZ_NT35512 * 2)
+
 
 
 enum {
@@ -59,33 +61,78 @@ enum {
 static int display_initialized_during_boot = (int)false;
 static struct fb_info *primary_fbi;
 
-static void kyle_lcd_pwr_setup(struct device *dev)
+static struct regulator *vreg_lcd_1v8_regulator = NULL;
+static struct regulator *vreg_lcd_3v0_regulator = NULL;
+
+static void skomer_lcd_pwr_setup(struct device *dev)
 {
 	int ret;
+	int min_uV, max_uV;
 
-	ret = gpio_request(KYLE_GPIO_LCD_PWR_EN,"LCD PWR EN");
-	if (ret < 0)
-		printk(KERN_ERR "Failed to get LCD PWR EN gpio (%d)\n",ret);
+	min_uV = max_uV = 1800000;
+	vreg_lcd_1v8_regulator = regulator_get(dev, "v_lcd_1v8");
+	if (IS_ERR(vreg_lcd_1v8_regulator)) {
+		ret = PTR_ERR(vreg_lcd_1v8_regulator);
+		printk(KERN_ERR "%s: fail to get vreg_lcd_1v8_regulator (%d)\n", __func__, ret);
+		return;
+	}
+	ret = regulator_set_voltage(vreg_lcd_1v8_regulator, min_uV, max_uV);
+	if (ret < 0) {
+		printk(KERN_ERR "%s: fail to set vreg_lcd_1v8_regulator to %d, %d (%d)\n", __func__, min_uV, max_uV, ret);
+		regulator_put(vreg_lcd_1v8_regulator);
+		return;
+	}
+	printk(KERN_INFO "%s: set vdd to %d uV - %d uV (%d)\n",  __func__, min_uV, max_uV, ret);
+
+	min_uV = max_uV = 3000000;
+	vreg_lcd_3v0_regulator = regulator_get(dev, "v_lcd_3v0");
+	if (IS_ERR(vreg_lcd_3v0_regulator)) {
+		ret = PTR_ERR(vreg_lcd_3v0_regulator);
+		printk(KERN_ERR "%s: fail to get vreg_lcd_3v0_regulator (%d)\n", __func__, ret);
+		return;
+	}
+	ret = regulator_set_voltage(vreg_lcd_3v0_regulator, min_uV, max_uV);
+	if (ret < 0) {
+		printk(KERN_ERR "%s: fail to set vreg_lcd_3v0_regulator to %d, %d (%d)\n", __func__, min_uV, max_uV, ret);
+		regulator_put(vreg_lcd_1v8_regulator);
+		regulator_put(vreg_lcd_3v0_regulator);
+		return;
+	}
+	printk(KERN_INFO "%s: set vdd to %d uV - %d uV (%d)\n",  __func__, min_uV, max_uV, ret);
 }
 
-static void kyle_lcd_pwr_onoff(bool on)
+
+static void skomer_lcd_pwr_onoff(bool on)
 {
-	if (on)
-		gpio_direction_output(KYLE_GPIO_LCD_PWR_EN,1);
-	else
-		gpio_direction_output(KYLE_GPIO_LCD_PWR_EN,0);
+	static bool is_on = false;
+
+	if (vreg_lcd_1v8_regulator == NULL || vreg_lcd_3v0_regulator == NULL) {
+		printk(KERN_ERR "%s: no regulator\n", __func__);
+		return;
+	}
+
+	if (on && !is_on) {
+		is_on = true;
+		regulator_enable(vreg_lcd_1v8_regulator);
+		regulator_enable(vreg_lcd_3v0_regulator);
+	} else if (!on && is_on) {
+		is_on = false;
+		regulator_disable(vreg_lcd_1v8_regulator);
+		regulator_disable(vreg_lcd_3v0_regulator);
+	}
+	printk(KERN_INFO "%s: %s\n", __func__, (is_on) ? "on" : "off");
 }
 
-extern void kyle_backlight_on_off(bool on);
+extern void skomer_backlight_on_off(bool on);
 
-struct sec_dsi_platform_data kyle_dsi_pri_display_info = {
-	.reset_gpio = KYLE_GPIO_LCD_RESET_N,
-	.lcd_detect = KYLE_GPIO_LCD_DETECT,
+struct sec_dsi_platform_data skomer_dsi_pri_display_info = {
+	.reset_gpio = LCD_RESET_N_SKOMER_BRINGUP,
+	.lcd_detect = OLED_DETECT_SKOMER_BRINGUP,
 	.bl_ctrl = false,
-	.lcd_pwr_setup = kyle_lcd_pwr_setup,
-	.lcd_pwr_onoff = kyle_lcd_pwr_onoff,
+	.lcd_pwr_setup = skomer_lcd_pwr_setup,
+	.lcd_pwr_onoff = skomer_lcd_pwr_onoff,
 	.min_ddr_opp = 50,
-	.bl_on_off = kyle_backlight_on_off,
+	.bl_on_off = skomer_backlight_on_off,
 };
 
 
@@ -118,9 +165,9 @@ static int __init lcdid_setup(char *str)
 
 	get_options(str, 4, lcd_id);
 	if (lcd_id[0] == 3) {
-		kyle_dsi_pri_display_info.lcdId[0] = lcd_id[1];
-		kyle_dsi_pri_display_info.lcdId[1] = lcd_id[2];
-		kyle_dsi_pri_display_info.lcdId[2] = lcd_id[3];
+		skomer_dsi_pri_display_info.lcdId[0] = lcd_id[1];
+		skomer_dsi_pri_display_info.lcdId[1] = lcd_id[2];
+		skomer_dsi_pri_display_info.lcdId[2] = lcd_id[3];
 	}
 	return 1;
 }
@@ -133,9 +180,9 @@ static int __init lcdmtpdata_setup(char *str)
 
 	get_options(str, SEC_DSI_MTP_DATA_LEN+1, mtpData);
 	if (mtpData[0] == SEC_DSI_MTP_DATA_LEN) {
-		kyle_dsi_pri_display_info.mtpAvail = true;
+		skomer_dsi_pri_display_info.mtpAvail = true;
 		for (i = 0; i < SEC_DSI_MTP_DATA_LEN; i++)
-			kyle_dsi_pri_display_info.mtpData[i] = mtpData[i+1];
+			skomer_dsi_pri_display_info.mtpData[i] = mtpData[i+1];
 	}
 	return 1;
 }
@@ -168,7 +215,7 @@ static struct mcde_display_device hva40wv1_display0 = {
 	.orientation = MCDE_DISPLAY_ROT_0,
 	.default_pixel_format = MCDE_OVLYPIXFMT_RGBA8888,
 	.dev = {
-		.platform_data = &kyle_dsi_pri_display_info,
+		.platform_data = &skomer_dsi_pri_display_info,
 	},
 };
 
@@ -199,12 +246,8 @@ static struct mcde_display_device nt35512_display0 = {
 	.fifo = MCDE_FIFO_A,
 	.orientation = MCDE_DISPLAY_ROT_0,
 	.default_pixel_format = MCDE_OVLYPIXFMT_RGBA8888,
-	/* +445681 display padding */
-	.x_res_padding = 0,
-	.y_res_padding = 0,
-	/* -445681 display padding */
 	.dev = {
-		.platform_data = &kyle_dsi_pri_display_info,
+		.platform_data = &skomer_dsi_pri_display_info,
 	},
 };
 
@@ -291,7 +334,7 @@ static void update_mcde_opp(struct device *dev,
 	}
 }
 
-int __init init_kyle_display_devices(void)
+int __init init_skomer_display_devices(void)
 {
 	int ret;
 	struct clk *clk_dsi_pll;
@@ -379,8 +422,9 @@ int __init init_kyle_display_devices(void)
 	else
 		ret = mcde_display_device_register(&nt35512_display0);
 
-		/* increased OPP required for DSI Mode panel */
-		pdata->update_opp = update_mcde_opp;
+	/* increased OPP required for DSI Mode panel */
+	pdata->update_opp = update_mcde_opp;
+
 
 	if (ret)
 		printk(KERN_ERR "Failed to register display device\n");
@@ -395,5 +439,5 @@ struct fb_info *get_primary_display_fb_info(void)
 	return primary_fbi;
 }
 
-module_init(init_kyle_display_devices);
+module_init(init_skomer_display_devices);
 

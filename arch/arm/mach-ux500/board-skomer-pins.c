@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Samsung Electronics
+ * Copyright (C) 2011 Samsung Electronics
  *
  * License terms: GNU General Public License (GPL) version 2
  */
@@ -14,7 +14,6 @@
 #include <asm/mach-types.h>
 #include <plat/pincfg.h>
 #include <plat/gpio-nomadik.h>
-#include <linux/mfd/ab8500.h>
 #include <linux/mfd/abx500/ab8500-gpio.h>
 
 #include <mach/hardware.h>
@@ -27,53 +26,17 @@
 
 #include <linux/workqueue.h>
 #include <mach/board-sec-ux500.h>
-#include "board-kyle-regulators.h"
-
-extern struct ab8500_platform_data ab8505_platdata;
+#include "board-skomer-regulators.h"
 
 /*
 * Configuration of pins, pull resisitors states
 */
-static pin_cfg_t kyle_r0_0_pins[] = {
-	GPIO66_GPIO		| PIN_OUTPUT_LOW,	/* RCV_SEL */
-	GPIO68_GPIO		| PIN_OUTPUT_HIGH,	/* LCD_BL_CTRL */
-	GPIO69_GPIO		| PIN_OUTPUT_LOW,	/* MIC_SEL */
-
-	GPIO88_GPIO		| PIN_INPUT_NOPULL,	/* AUDIO_INT */
-	GPIO89_GPIO		| PIN_OUTPUT_LOW,	/* AUDIO_RESET */
-
-	GPIO94_GPIO		| PIN_OUTPUT_HIGH,	/* TSP_LDO_ON1 */
-	GPIO95_GPIO		| PIN_INPUT_PULLUP,	/* JACK_nINT */
-
-	GPIO140_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO141_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-};
-
-static pin_cfg_t kyle_r0_1_pins[] = {
-	GPIO16_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO17_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO21_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-
-	GPIO66_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO68_LCD_VSI0,				/* TE */
-	GPIO69_GPIO		| PIN_OUTPUT_HIGH,	/* LCD_BL_CTRL */
-
-	GPIO88_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO89_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-
-	GPIO94_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO95_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-
-	GPIO140_GPIO		| PIN_OUTPUT_LOW,	/* CAM_FLASH_EN */
-	GPIO141_GPIO		| PIN_OUTPUT_LOW,	/* CAM_FLASH_MODE */
-};
-
-static pin_cfg_t kyle_pins[] = {
+static pin_cfg_t skomer_bringup_pins[] = {
 	/* GBF UART */
 	/* uart-0 pins gpio configuration should be
 	 * kept intact to prevent glitch in tx line
 	 * when tty dev is opened. Later these pins
-	 * are configured to uart kyle_pins_uart0
+	 * are configured to uart skomer_bringup_pins_uart0
 	 *
 	 * It will be replaced with uart configuration
 	 * once the issue is solved.
@@ -82,6 +45,11 @@ static pin_cfg_t kyle_pins[] = {
 	GPIO1_GPIO		| PIN_OUTPUT_HIGH,
 	GPIO2_GPIO		| PIN_INPUT_PULLUP,
 	GPIO3_GPIO		| PIN_OUTPUT_HIGH,
+
+	GPIO4_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO5_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO6_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO7_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 
 	/* I2C Camera */
 	GPIO8_I2C2_SDA,
@@ -96,6 +64,8 @@ static pin_cfg_t kyle_pins[] = {
 	GPIO14_MSP0_TCK,
 	GPIO15_MSP0_RXD,
 
+	GPIO16_GPIO		| PIN_INPUT_PULLDOWN, /* NC */
+	GPIO17_GPIO		| PIN_INPUT_PULLDOWN, /* NC */
 	GPIO18_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO19_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO20_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
@@ -104,8 +74,8 @@ static pin_cfg_t kyle_pins[] = {
 	GPIO29_U2_RXD	| PIN_INPUT_PULLUP,
 	GPIO30_U2_TXD	| PIN_OUTPUT_HIGH,
 
-	GPIO31_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO32_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO31_GPIO		| PIN_INPUT_PULLDOWN, /* NC */
+	GPIO32_GPIO		| PIN_INPUT_PULLDOWN,	/* NFC_IRQ */
 
 	/* MSP AB8500 */
 	GPIO33_MSP1_TXD,
@@ -115,8 +85,10 @@ static pin_cfg_t kyle_pins[] = {
 
 	GPIO64_GPIO		| PIN_OUTPUT_LOW,	/* VT_CAM_STBY */
 	GPIO65_GPIO		| PIN_OUTPUT_LOW,	/* RST_VT_CAM */
+	GPIO66_GPIO		| PIN_INPUT_PULLDOWN, /* NC */
 	GPIO67_GPIO		| PIN_INPUT_PULLUP,	/* VOL_UP */
-
+	GPIO68_LCD_VSI0,				/* TE */
+	GPIO69_GPIO		| PIN_OUTPUT_HIGH,	/* LCD_BL_CTRL */
 	GPIO70_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO71_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO72_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
@@ -124,9 +96,9 @@ static pin_cfg_t kyle_pins[] = {
 	GPIO74_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO75_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO76_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO77_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO78_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO79_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO77_GPIO		| PIN_INPUT_PULLDOWN, /* NC */
+	GPIO78_GPIO		| PIN_INPUT_PULLDOWN, /* NC */
+	GPIO79_GPIO		| PIN_INPUT_PULLDOWN, /* NC */
 	GPIO80_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO81_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO82_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
@@ -134,22 +106,24 @@ static pin_cfg_t kyle_pins[] = {
 	GPIO84_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO85_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 
-	GPIO86_GPIO		| PIN_OUTPUT_LOW,	/* GPS_EN */
+	GPIO86_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO87_GPIO		| PIN_OUTPUT_LOW,	/* TXS0206-29_EN */
-
+	GPIO88_GPIO		| PIN_INPUT_PULLDOWN, /* NC */
+	GPIO89_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO90_GPIO		| PIN_INPUT_PULLDOWN,	/* SERVICE_AB8505 (OPEN) */
 
 	GPIO91_GPIO		| PIN_INPUT_PULLUP,	/* HOME_KEY */
 	GPIO92_GPIO		| PIN_INPUT_PULLUP,	/* VOL_DOWN */
-	GPIO93_GPIO		| PIN_INPUT_NOPULL,	/* LCD_DETECT */
-
+	GPIO93_GPIO		| PIN_INPUT_NOPULL,	/* OLED_DETECT */
+	GPIO94_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO95_GPIO		| PIN_INPUT_PULLDOWN, /* NC */
 	GPIO96_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO97_GPIO		| PIN_INPUT_NOPULL,	/* BT_HOST_WAKE */
 
 	/* MMC2 (eMMC) */
 	GPIO128_MC2_CLK		| PIN_OUTPUT_LOW,
 	GPIO129_MC2_CMD		| PIN_INPUT_PULLUP,
-	GPIO130_MC2_FBCLK	| PIN_INPUT_NOPULL,
+	GPIO130_GPIO			| PIN_INPUT_PULLDOWN, /* NC */
 	GPIO131_MC2_DAT0	| PIN_INPUT_PULLUP,
 	GPIO132_MC2_DAT1	| PIN_INPUT_PULLUP,
 	GPIO133_MC2_DAT2	| PIN_INPUT_PULLUP,
@@ -159,13 +133,16 @@ static pin_cfg_t kyle_pins[] = {
 	GPIO137_MC2_DAT6	| PIN_INPUT_PULLUP,
 	GPIO138_MC2_DAT7	| PIN_INPUT_PULLUP,
 
-	GPIO139_GPIO		| PIN_OUTPUT_HIGH,	/* LCD_RESET_N */
-
+	GPIO139_GPIO		| PIN_OUTPUT_HIGH,	/* MIPI_DSI0_RESET_N */
+	GPIO140_GPIO		| PIN_OUTPUT_LOW,	/* CAM_FLASH_EN */
+	GPIO141_GPIO		| PIN_OUTPUT_LOW,	/* CAM_FLASH_MODE */
 	GPIO142_GPIO		| PIN_OUTPUT_LOW,	/* 5M_CAM_STBY */
 	GPIO143_GPIO		| PIN_INPUT_NOPULL,	/* SUBPMU_SCL */
 	GPIO144_GPIO		| PIN_INPUT_NOPULL,	/* SUBPMU_SDA */
+
 	GPIO145_GPIO		| PIN_OUTPUT_LOW,	/* SUBPMU_PWRON */
 	GPIO146_GPIO		| PIN_INPUT_NOPULL,	/* PS_INT */
+
 	GPIO149_GPIO		| PIN_OUTPUT_LOW,	/* RST_5M_CAM */
 	GPIO150_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 
@@ -191,24 +168,24 @@ static pin_cfg_t kyle_pins[] = {
 	GPIO170_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO171_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 
-	GPIO192_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO193_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO194_GPIO		| PIN_OUTPUT_LOW,	/* KEY_LED_EN */
+	GPIO192_GPIO		| PIN_INPUT_PULLUP,	/* KEY_CAMERA_H */
+	GPIO193_GPIO		| PIN_INPUT_PULLUP,	/* KEY_CAMERA_F */
+	GPIO194_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO195_GPIO		| PIN_OUTPUT_LOW,	/* MOT_EN */
 	GPIO196_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO197_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO198_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO199_GPIO		| PIN_OUTPUT_LOW,	/* BT_WAKE */
 	GPIO200_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO201_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO202_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO201_GPIO		| PIN_INPUT_PULLDOWN, /* NC */
+	GPIO202_GPIO		| PIN_INPUT_PULLDOWN, /* NC */
 	GPIO203_GPIO		| PIN_INPUT_PULLUP,	/* SMD_ON */
-	GPIO204_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO205_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO204_GPIO		| PIN_INPUT_PULLUP,	/* MENU_KEY */
+	GPIO205_GPIO		| PIN_INPUT_PULLUP,	/* BACK_KEY */
 	GPIO206_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO207_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 
-	GPIO209_GPIO		| PIN_OUTPUT_LOW,	/* GBF_RESET_N */
+	GPIO209_GPIO		| PIN_OUTPUT_HIGH,	/* GBF_RESET_N */
 
 	/* SDI1 (SDIO) WLAN */
 	GPIO208_MC1_CLK		| PIN_OUTPUT_LOW,	/* WLAN_SDIO_CLK */
@@ -220,24 +197,28 @@ static pin_cfg_t kyle_pins[] = {
 
 	GPIO215_GPIO		| PIN_OUTPUT_LOW,	/* WLAN_RST_N */
 	GPIO216_GPIO		| PIN_INPUT_PULLDOWN,	/* WL_HOST_WAKE */
-	GPIO217_GPIO		| PIN_INPUT_NOPULL,	/* T_FLASH_DETECT */
-	GPIO218_GPIO		| PIN_INPUT_NOPULL,	/* TSP_INT_1V8 */
-	GPIO219_GPIO		| PIN_OUTPUT_HIGH,	/* LCD_PWR_EN */
+	GPIO217_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO218_GPIO		| PIN_INPUT_NOPULL,	/* TSP_INT */
+	GPIO219_GPIO		| PIN_INPUT_PULLDOWN, /* NC */
 	GPIO220_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO221_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO222_GPIO		| PIN_OUTPUT_LOW,	/* BT_VREG_EN */
 	GPIO223_GPIO		| PIN_OUTPUT_HIGH,	/* MEM_LDO_EN */
 	GPIO224_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO225_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO226_GPIO		| PIN_INPUT_PULLDOWN,	/* VGA_CAM_ID */
+	GPIO226_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO227_GPIO		| PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO228_GPIO		| PIN_OUTPUT_LOW,	/* CAM_MCLK */
-	GPIO229_GPIO		| PIN_INPUT_PULLDOWN,	/* TSP_SDA_1V8 */
-	GPIO230_GPIO		| PIN_INPUT_PULLDOWN,	/* TSP_SCL_1V8 */
+	GPIO229_GPIO		| PIN_INPUT_NOPULL, /* TSP_SDA_1V8 */
+	GPIO230_GPIO		| PIN_INPUT_NOPULL, /* TSP_SCL_1V8 */
+};
+
+static pin_cfg_t skomer_rev05_pins[] = {
+	GPIO86_GPIO		| PIN_OUTPUT_LOW,	/* GPS_ON_OFF */
 };
 
 /* STM trace or SD Card pin configurations */
-static pin_cfg_t kyle_ape_trace[] = {
+static pin_cfg_t skomer_bringup_ape_trace[] = {
 	GPIO22_GPIO | PIN_INPUT_NOPULL,	/* CLK-f */
 
 	PIN_CFG(23, ALT_C),	/* APE CLK */
@@ -247,7 +228,7 @@ static pin_cfg_t kyle_ape_trace[] = {
 	PIN_CFG(28, ALT_C),	/* APE DAT3 */
 };
 
-static pin_cfg_t kyle_modem_trace[] = {
+static pin_cfg_t skomer_bringup_modem_trace[] = {
 	GPIO22_GPIO | PIN_INPUT_NOPULL, /* CLK-f */
 	GPIO23_STMMOD_CLK | PIN_SLPM_USE_MUX_SETTINGS_IN_SLEEP,	/* STM CLK */
 	GPIO24_UARTMOD_RXD | PIN_SLPM_USE_MUX_SETTINGS_IN_SLEEP, /* STM UART RXD */
@@ -259,7 +240,7 @@ static pin_cfg_t kyle_modem_trace[] = {
 	GPIO87_GPIO | PIN_OUTPUT_HIGH,  /* TXS0206-29_EN */
 };
 
-static pin_cfg_t kyle_fidobox_trace[] = {
+static pin_cfg_t skomer_bringup_fidobox_trace[] = {
 	/* UARTMOD for FIDO box */
 	GPIO153_U2_RXD,
 	GPIO154_U2_TXD,
@@ -271,7 +252,7 @@ static pin_cfg_t kyle_fidobox_trace[] = {
 	GPIO159_STMAPE_DAT0,
 };
 
-static pin_cfg_t kyle_sdmmc[] = {
+static pin_cfg_t skomer_bringup_sdmmc[] = {
 	/* MMC0 (MicroSD card) */
 	GPIO22_MC0_FBCLK	| PIN_INPUT_NOPULL,
 	GPIO23_MC0_CLK		| PIN_OUTPUT_LOW,
@@ -287,39 +268,44 @@ static pin_cfg_t kyle_sdmmc[] = {
  * Pins disabled when not used to save power
  */
 
-	/* Sensors(Accel BMA222) */
-static UX500_PINS(kyle_i2c2,
-	GPIO8_I2C2_SDA |
+	/* Proximity & Light Sensor I2C */
+static UX500_PINS(skomer_bringup_i2c0,
+	GPIO147_I2C0_SCL |
 		PIN_SLPM_GPIO | PIN_SLPM_INPUT_NOPULL,
-	GPIO9_I2C2_SCL |
+	GPIO148_I2C0_SDA |
 		PIN_SLPM_GPIO | PIN_SLPM_INPUT_NOPULL,
 );
 
 	/* TSU6111(micro-USB switch  */
-static UX500_PINS(kyle_i2c1,
+static UX500_PINS(skomer_bringup_i2c1,
 	GPIO16_I2C1_SCL |
 		PIN_SLPM_GPIO | PIN_SLPM_INPUT_NOPULL,
 	GPIO17_I2C1_SDA |
 		PIN_SLPM_GPIO | PIN_SLPM_INPUT_NOPULL,
 );
 
-	/* Proximity Sensor I2C */
-static UX500_PINS(kyle_i2c0,
-	GPIO147_I2C0_SCL |
+	/* MAIN & VT CAMERA I2C */
+static UX500_PINS(skomer_bringup_i2c2,
+	GPIO8_I2C2_SDA |
 		PIN_SLPM_GPIO | PIN_SLPM_INPUT_NOPULL,
-	GPIO148_I2C0_SDA |
+	GPIO9_I2C2_SCL |
 		PIN_SLPM_GPIO | PIN_SLPM_INPUT_NOPULL,
 );
+
 	/* Touchscreen I2C */
-static UX500_PINS(kyle_i2c3,
+static UX500_PINS(skomer_bringup_i2c3,
 	GPIO229_I2C3_SDA |
 		PIN_SLPM_GPIO | PIN_SLPM_INPUT_NOPULL,
 	GPIO230_I2C3_SCL |
 		PIN_SLPM_GPIO | PIN_SLPM_INPUT_NOPULL,
 );
 
+static UX500_PINS(skomer_bringup_mcde_dpi,
+	/* DPI LCD RGB I/F */
+);
+
 /* USB */
-static UX500_PINS(kyle_pins_usb,
+static UX500_PINS(skomer_pins_usb,
 	GPIO256_USB_NXT,
 	GPIO257_USB_STP		| PIN_OUTPUT_HIGH,
 	GPIO258_USB_XCLK,
@@ -334,7 +320,7 @@ static UX500_PINS(kyle_pins_usb,
 	GPIO267_USB_DAT0,
 );
 
-static UX500_PINS(kyle_bringup_pins_uart0,
+static UX500_PINS(skomer_pins_uart0,
 	GPIO0_U0_CTSn	| PIN_INPUT_PULLUP |
 		PIN_SLPM_GPIO | PIN_SLPM_INPUT_NOPULL,
 	GPIO1_U0_RTSn	| PIN_OUTPUT_HIGH |
@@ -345,50 +331,22 @@ static UX500_PINS(kyle_bringup_pins_uart0,
 		PIN_SLPM_GPIO | PIN_SLPM_OUTPUT_HIGH,
 );
 
-static UX500_PINS(kyle_r0_1_pins_uart1,
-	GPIO6_U1_CTSn	| PIN_INPUT_PULLUP |
-		PIN_SLPM_GPIO | PIN_SLPM_INPUT_NOPULL,
-	GPIO7_U1_RTSn	| PIN_OUTPUT_HIGH |
-		PIN_SLPM_GPIO | PIN_SLPM_OUTPUT_HIGH,
-	GPIO4_U1_RXD	| PIN_INPUT_PULLUP |
-		PIN_SLPM_GPIO | PIN_SLPM_INPUT_NOPULL,
-	GPIO5_U1_TXD	| PIN_OUTPUT_HIGH |
-		PIN_SLPM_GPIO | PIN_SLPM_OUTPUT_HIGH,
-);
-
-static struct ux500_pin_lookup kyle_lookup_pins[] = {
-	PIN_LOOKUP("nmk-i2c.0", &kyle_i2c0),
-	PIN_LOOKUP("nmk-i2c.1", &kyle_i2c1),
-	PIN_LOOKUP("nmk-i2c.2", &kyle_i2c2),
-	PIN_LOOKUP("nmk-i2c.3", &kyle_i2c3),
-	PIN_LOOKUP("musb-ux500.0", &kyle_pins_usb),
-	PIN_LOOKUP("uart0", &kyle_bringup_pins_uart0),
+static struct ux500_pin_lookup skomer_bringup_lookup_pins[] = {
+	PIN_LOOKUP("mcde-dpi", &skomer_bringup_mcde_dpi),
+	PIN_LOOKUP("nmk-i2c.0", &skomer_bringup_i2c0),
+	//PIN_LOOKUP("nmk-i2c.1", &skomer_bringup_i2c1), // 16, 17, N/C
+	PIN_LOOKUP("nmk-i2c.2", &skomer_bringup_i2c2),
+	//PIN_LOOKUP("nmk-i2c.3", &skomer_bringup_i2c3),
+	PIN_LOOKUP("musb-ux500.0", &skomer_pins_usb),
+	PIN_LOOKUP("ab-iddet.0", &skomer_pins_usb),
+	PIN_LOOKUP("uart0", &skomer_pins_uart0),
 };
 
-static struct ux500_pin_lookup kyle_r0_1_lookup_pins[] = {
-	PIN_LOOKUP("nmk-i2c.0", &kyle_i2c0),
-	PIN_LOOKUP("nmk-i2c.2", &kyle_i2c2),
-	PIN_LOOKUP("nmk-i2c.3", &kyle_i2c3),
-	PIN_LOOKUP("musb-ux500.0", &kyle_pins_usb),
-	PIN_LOOKUP("uart0", &kyle_bringup_pins_uart0),
-	PIN_LOOKUP("uart1", &kyle_r0_1_pins_uart1),
-};
-
-static pin_cfg_t kyle_gps_r0_0_pins[] = {
-	PIN_CFG(KYLE_GPIO_GPS_RST_N, GPIO) | PIN_OUTPUT_HIGH,
-};
-
-static pin_cfg_t kyle_gps_r0_1_pins[] = {
-	PIN_CFG(KYLE_GPIO_GBF_RESETN_R0_1, GPIO) | PIN_OUTPUT_HIGH,
-};
-
-static pin_cfg_t kyle_gps_pins[] = {
-	GPIO4_U1_RXD | PIN_INPUT_PULLUP, /* GPS UART */
-	GPIO5_U1_TXD | PIN_OUTPUT_HIGH, /* GPS UART */
+static pin_cfg_t skomer_gps_uart_pins[] = {
+	GPIO4_U1_RXD | PIN_INPUT_PULLUP,
+	GPIO5_U1_TXD | PIN_OUTPUT_HIGH,
 	GPIO6_U1_CTSn | PIN_INPUT_PULLUP,
 	GPIO7_U1_RTSn | PIN_OUTPUT_HIGH,
-
-	PIN_CFG(KYLE_GPIO_GPS_ON_OFF, GPIO) | PIN_OUTPUT_LOW,
 };
 
 static void __init gps_pins_init(void)
@@ -397,41 +355,31 @@ static void __init gps_pins_init(void)
 	if (!gps_dev)
 		pr_err("Failed to create device(gps)!\n");
 
-	nmk_config_pins(kyle_gps_pins, ARRAY_SIZE(kyle_gps_pins));
-
-	if (system_rev >= KYLE_ATT_R0_1){
-		nmk_config_pins(kyle_gps_r0_1_pins, ARRAY_SIZE(kyle_gps_r0_1_pins));
-		gpio_request(KYLE_GPIO_GBF_RESETN_R0_1, "GPS_nRST");
-		gpio_direction_output(KYLE_GPIO_GBF_RESETN_R0_1, 1);
-		gpio_export(KYLE_GPIO_GBF_RESETN_R0_1, 1);
-	} else if (system_rev == KYLE_ATT_R0_0){
-		nmk_config_pins(kyle_gps_r0_0_pins, ARRAY_SIZE(kyle_gps_r0_0_pins));
-		gpio_request(KYLE_GPIO_GPS_RST_N, "GPS_nRST");
-		gpio_direction_output(KYLE_GPIO_GPS_RST_N, 1);
-		gpio_export(KYLE_GPIO_GPS_RST_N, 1);
-	}
-
-	gpio_request(KYLE_GPIO_GPS_ON_OFF, "GPS_ON_OFF");
-	gpio_direction_output(KYLE_GPIO_GPS_ON_OFF, 0);
-
-	gpio_export(KYLE_GPIO_GPS_ON_OFF, 1);
-
 	BUG_ON(!gps_dev);
 
-	if (system_rev >= KYLE_ATT_R0_1){
-		gpio_export_link(gps_dev, "GPS_nRST", KYLE_GPIO_GBF_RESETN_R0_1);
-	} else if (system_rev == KYLE_ATT_R0_0){
-		gpio_export_link(gps_dev, "GPS_nRST", KYLE_GPIO_GPS_RST_N);
-	}
+	printk("gps_pins_init!!\n");
 
-	gpio_export_link(gps_dev, "GPS_ON_OFF", KYLE_GPIO_GPS_ON_OFF);
+	nmk_config_pins(skomer_gps_uart_pins,
+		ARRAY_SIZE(skomer_gps_uart_pins));
+
+	gpio_request(GPS_RST_N_SKOMER_BRINGUP, "GPS_nRST");
+	gpio_direction_output(GPS_RST_N_SKOMER_BRINGUP, 1);
+	gpio_request(GPS_ON_OFF_SKOMER_BRINGUP, "GPS_ON_OFF");
+	gpio_direction_output(GPS_ON_OFF_SKOMER_BRINGUP, 0);
+
+	gpio_export(GPS_RST_N_SKOMER_BRINGUP, 1);
+	gpio_export(GPS_ON_OFF_SKOMER_BRINGUP, 1);
+
+	gpio_export_link(gps_dev, "GPS_nRST", GPS_RST_N_SKOMER_BRINGUP);
+	gpio_export_link(gps_dev, "GPS_ON_OFF", GPS_ON_OFF_SKOMER_BRINGUP);
+
+	printk("gps_pins_init done!!\n");
 }
 
 static void __init sdmmc_pins_init(void)
 {
 	u32 value;
 	const void *prcm_gpiocr = __io_address(U8500_PRCMU_BASE) + 0x138;
-	struct regulator_init_data *regulators = ab8505_platdata.regulator->regulator;
 
 	if (sec_debug_settings & SEC_DBG_STM_APE_OPT) {
 
@@ -440,14 +388,14 @@ static void __init sdmmc_pins_init(void)
 		value |= 0x00000200;	/* Set bit 9 */
 		writel(value, prcm_gpiocr);
 
-		nmk_config_pins(kyle_ape_trace,
-			ARRAY_SIZE(kyle_ape_trace));
+		nmk_config_pins(skomer_bringup_ape_trace,
+			ARRAY_SIZE(skomer_bringup_ape_trace));
 
 		/* also need to ensure VAUX3 turned on (defaults to 2.91V) */
-		regulators[AB8505_LDO_AUX3].constraints.valid_ops_mask = 0;
-		regulators[AB8505_LDO_AUX3].constraints.always_on = 1;
-		regulators[AB9540_LDO_AUX3].constraints.valid_ops_mask = 0;
-		regulators[AB9540_LDO_AUX3].constraints.always_on = 1;
+		skomer_ab8500_regulators[AB8500_LDO_AUX3].constraints.valid_ops_mask = 0;
+		skomer_ab8500_regulators[AB8500_LDO_AUX3].constraints.always_on = 1;
+		skomer_ab8505_regulators[AB9540_LDO_AUX3].constraints.valid_ops_mask = 0;
+		skomer_ab8505_regulators[AB9540_LDO_AUX3].constraints.always_on = 1;
 
 		printk(KERN_INFO "SD Card I/F set for STM APE Trace\n");
 
@@ -458,14 +406,14 @@ static void __init sdmmc_pins_init(void)
 		value &= ~0x00002202; /* For UART_MOD */
 		writel(value, prcm_gpiocr);
 
-		nmk_config_pins(kyle_modem_trace,
-			ARRAY_SIZE(kyle_modem_trace));
+		nmk_config_pins(skomer_bringup_modem_trace,
+			ARRAY_SIZE(skomer_bringup_modem_trace));
 
 		/* also need to ensure VAUX3 turned on (defaults to 2.91V) */
-		regulators[AB8505_LDO_AUX3].constraints.valid_ops_mask = 0;
-		regulators[AB8505_LDO_AUX3].constraints.always_on = 1;
-		regulators[AB9540_LDO_AUX3].constraints.valid_ops_mask = 0;
-		regulators[AB9540_LDO_AUX3].constraints.always_on = 1;
+		skomer_ab8500_regulators[AB8500_LDO_AUX3].constraints.valid_ops_mask = 0;
+		skomer_ab8500_regulators[AB8500_LDO_AUX3].constraints.always_on = 1;
+		skomer_ab8505_regulators[AB9540_LDO_AUX3].constraints.valid_ops_mask = 0;
+		skomer_ab8505_regulators[AB9540_LDO_AUX3].constraints.always_on = 1;
 
 		printk(KERN_INFO "SD Card I/F set for STM Modem Trace\n");
 	} else if (sec_debug_settings & SEC_DBG_STM_FIDO_OPT) {
@@ -474,8 +422,8 @@ static void __init sdmmc_pins_init(void)
 		value |= 0x00002002;
 		writel(value, prcm_gpiocr);
 
-		nmk_config_pins(kyle_fidobox_trace,
-			ARRAY_SIZE(kyle_fidobox_trace));
+		nmk_config_pins(skomer_bringup_fidobox_trace,
+			ARRAY_SIZE(skomer_bringup_fidobox_trace));
 
 		printk(KERN_INFO "XTI I/F set for STM Fidobox Trace\n");
 	} else {
@@ -484,12 +432,12 @@ static void __init sdmmc_pins_init(void)
 		value &= ~0x00000200; /* clear bit 9 */
 		writel(value, prcm_gpiocr);
 
-		nmk_config_pins(kyle_sdmmc,
-			ARRAY_SIZE(kyle_sdmmc));
+		nmk_config_pins(skomer_bringup_sdmmc,
+			ARRAY_SIZE(skomer_bringup_sdmmc));
 	}
 }
 
-static pin_cfg_t kyle_power_save_bank0[] = {
+static pin_cfg_t skomer_bringup_power_save_bank0[] = {
 	GPIO0_GPIO | PIN_INPUT_PULLUP,	/* GBF_UART_CTS */
 	GPIO1_GPIO | PIN_OUTPUT_HIGH,	/* GBF_UART_RTSn */
 	GPIO2_GPIO | PIN_INPUT_PULLUP,	/* GBF_UART_RXD */
@@ -508,10 +456,10 @@ static pin_cfg_t kyle_power_save_bank0[] = {
 	GPIO12_GPIO | PIN_OUTPUT_LOW,	/* GBF_IOM_DOUT */
 	GPIO13_GPIO | PIN_OUTPUT_LOW,	/* GBF_IOM_TFS */
 	GPIO14_GPIO | PIN_OUTPUT_LOW,	/* GBF_IOM_CLK */
-	GPIO15_GPIO | PIN_INPUT_NOPULL,	/* GBF_IOM_DIN */
+	GPIO15_GPIO | PIN_INPUT_PULLDOWN,	/* GBF_IOM_DIN */
 
-	GPIO16_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO17_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO16_GPIO | PIN_INPUT_PULLDOWN, /* NC */
+	GPIO17_GPIO | PIN_INPUT_PULLDOWN, /* NC */
 	GPIO18_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO19_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 
@@ -522,10 +470,10 @@ static pin_cfg_t kyle_power_save_bank0[] = {
 
 	GPIO29_GPIO | PIN_INPUT_PULLUP,	/* IF_RXD */
 	GPIO30_GPIO | PIN_OUTPUT_HIGH,	/* IF_TXD */
-	GPIO31_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO31_GPIO | PIN_INPUT_PULLDOWN, /* NC */
 };
 
-static pin_cfg_t kyle_sdmmc_sleep[] = {
+static pin_cfg_t skomer_bringup_sdmmc_sleep[] = {
 	/* MMC0 (MicroSD card) */
 	GPIO22_GPIO | PIN_SLPM_DIR_INPUT |
 		PIN_SLPM_WAKEUP_ENABLE | PIN_SLPM_PULL_DOWN,
@@ -545,55 +493,59 @@ static pin_cfg_t kyle_sdmmc_sleep[] = {
 		PIN_SLPM_WAKEUP_ENABLE | PIN_SLPM_PDIS_DISABLED,
 };
 
-static pin_cfg_t kyle_common_sleep_table[] = {
-	GPIO32_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO33_GPIO | PIN_OUTPUT_LOW,	/* MSP */
-	GPIO34_GPIO | PIN_INPUT_NOPULL,	/* MSP */
-	GPIO35_GPIO | PIN_INPUT_NOPULL,	/* MSP */
-	GPIO36_GPIO | PIN_INPUT_NOPULL,	/* MSP */
+static pin_cfg_t skomer_common_sleep_table[] = {
+	GPIO16_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO17_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
+
+	GPIO31_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO32_GPIO | PIN_INPUT_PULLDOWN,	/* NFC_IRQ */
+	GPIO33_GPIO | PIN_OUTPUT_LOW,
+	GPIO34_GPIO | PIN_INPUT_NOPULL,
+	GPIO35_GPIO | PIN_INPUT_NOPULL,
+	GPIO36_GPIO | PIN_INPUT_NOPULL,
 
 	GPIO64_GPIO | PIN_OUTPUT_LOW,	/* VT_CAM_STBY */
 	GPIO65_GPIO | PIN_OUTPUT_LOW,	/* RST_VT_CAM */
 	GPIO66_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO67_GPIO | PIN_INPUT_PULLUP,	/* VOL_UP */
-	GPIO68_GPIO | PIN_INPUT_PULLDOWN,	/* LCD_VSYNC */
-	GPIO69_GPIO | PIN_OUTPUT_LOW,	/* LCD_BL_CTRL */
+	GPIO68_GPIO | PIN_INPUT_NOPULL,	/* FLM */
+	GPIO69_GPIO | PIN_OUTPUT_LOW,  /* LCD_BL_CTRL */
 
 	GPIO70_GPIO | PIN_INPUT_PULLDOWN,
 	GPIO71_GPIO | PIN_INPUT_PULLDOWN,
 	GPIO72_GPIO | PIN_INPUT_PULLDOWN,
 	GPIO73_GPIO | PIN_INPUT_PULLDOWN,
 	GPIO74_GPIO | PIN_INPUT_PULLDOWN,
-	GPIO75_GPIO | PIN_INPUT_PULLDOWN,
-	GPIO76_GPIO | PIN_INPUT_PULLDOWN,
-	GPIO77_GPIO | PIN_INPUT_PULLDOWN,
-	GPIO78_GPIO | PIN_INPUT_PULLDOWN,
-	GPIO79_GPIO | PIN_INPUT_PULLDOWN,
+	GPIO75_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO76_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO77_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO78_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO79_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 
-	GPIO80_GPIO | PIN_INPUT_PULLDOWN,
+	GPIO80_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO81_GPIO | PIN_INPUT_PULLDOWN,
-	GPIO82_GPIO | PIN_INPUT_PULLDOWN,
+	GPIO82_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO83_GPIO | PIN_INPUT_PULLDOWN,
 	GPIO84_GPIO | PIN_INPUT_PULLDOWN,
 	GPIO85_GPIO | PIN_INPUT_PULLDOWN,
-/*	GPIO86_GPIO | PIN_OUTPUT_LOW,*//* GPS_EN */
-/*	GPIO87_GPIO | PIN_OUTPUT_LOW,*/	/* TXS0206-29_EN */
-	GPIO88_GPIO | PIN_INPUT_PULLDOWN,  /* NC */
-	GPIO89_GPIO | PIN_INPUT_PULLDOWN,  /* NC */
+	GPIO86_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
+	/*GPIO87_GPIO | PIN_OUTPUT_LOW,*/	/* TXS0206-29_EN */
+	GPIO88_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO89_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 
 	GPIO90_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO91_GPIO | PIN_INPUT_PULLUP,	/* HOME_KEY */
 	GPIO92_GPIO | PIN_INPUT_PULLUP,	/* VOL_DOWN */
-	GPIO93_GPIO | PIN_INPUT_PULLUP,	/* LCD_DETECT */
-	GPIO94_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO93_GPIO | PIN_INPUT_PULLUP,	/* LCD_DET */
+	GPIO94_GPIO | PIN_INPUT_PULLDOWN,
 	GPIO95_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO96_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
-/*	GPIO97_GPIO | PIN_INPUT_PULLDOWN,*/	/* BT_HOST_WAKE */
+/*	GPIO97_GPIO | PIN_INPUT_PULLDOWN,*/	/* NC */
 
 /*	GPIO128_GPIO | PIN_OUTPUT_HIGH, */
 /*	GPIO129_GPIO | PIN_OUTPUT_HIGH, */
 
-/*	GPIO130_GPIO | PIN_OUTPUT_HIGH, */
+	GPIO130_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 /*	GPIO131_GPIO | PIN_OUTPUT_HIGH, */
 /*	GPIO132_GPIO | PIN_OUTPUT_HIGH, */
 /*	GPIO133_GPIO | PIN_OUTPUT_HIGH, */
@@ -602,10 +554,10 @@ static pin_cfg_t kyle_common_sleep_table[] = {
 /*	GPIO136_GPIO | PIN_OUTPUT_HIGH, */
 /*	GPIO137_GPIO | PIN_OUTPUT_HIGH, */
 /*	GPIO138_GPIO | PIN_OUTPUT_HIGH, */
-	GPIO139_GPIO | PIN_OUTPUT_LOW,	/* LCD_RESET_N */
+	GPIO139_GPIO | PIN_OUTPUT_LOW,	/* MIPI_DSI0_RESET_N */
 
-/*	GPIO140_GPIO | PIN_OUTPUT_LOW,*//* CAM_FLASH_EN */
-/*	GPIO141_GPIO | PIN_OUTPUT_LOW,*//* CAM_FLASH_MODE */
+	GPIO140_GPIO | PIN_OUTPUT_LOW,	/* CAM_FLASH_EN */
+	GPIO141_GPIO | PIN_OUTPUT_LOW,	/* CAM_FLASH_MODE */
 	GPIO142_GPIO | PIN_OUTPUT_LOW,	/* 5M_CAM_STBY */
 	GPIO143_GPIO | PIN_INPUT_NOPULL,
 	GPIO144_GPIO | PIN_INPUT_NOPULL,
@@ -640,21 +592,21 @@ static pin_cfg_t kyle_common_sleep_table[] = {
 	GPIO170_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO171_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 
-	GPIO192_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO193_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO194_GPIO | PIN_OUTPUT_LOW,	/* KEY_LED_EN */
+	GPIO192_GPIO | PIN_INPUT_PULLUP,	/* KEY_CAMERA_H */
+	GPIO193_GPIO | PIN_INPUT_PULLUP,	/* KEY_CAMERA_F */
+	GPIO194_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO195_GPIO | PIN_OUTPUT_LOW,	/* MOT_EN */
 	GPIO196_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO197_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO198_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
-/*	GPIO199_GPIO | PIN_OUTPUT_LOW,*/	/* BT_WAKE */
+/*	GPIO199_GPIO | PIN_INPUT_PULLDOWN,*//* NC */
 
 	GPIO200_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO201_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO202_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO203_GPIO | PIN_INPUT_PULLUP,	/* SMD_ON */
-	GPIO204_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO205_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO204_GPIO | PIN_INPUT_PULLUP,  /* MENU_KEY */
+	GPIO205_GPIO | PIN_INPUT_PULLUP,  /* BACK_KEY */
 	GPIO206_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO207_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO208_GPIO | PIN_OUTPUT_LOW,	/* WLAN_SDIO_CLK */
@@ -665,23 +617,23 @@ static pin_cfg_t kyle_common_sleep_table[] = {
 	GPIO212_GPIO | PIN_INPUT_PULLUP,
 	GPIO213_GPIO | PIN_INPUT_PULLUP,
 	GPIO214_GPIO | PIN_INPUT_PULLUP,
-/*	GPIO215_GPIO | PIN_OUTPUT_LOW,*/	/* WLAN_EN */
+/*	GPIO215_GPIO | PIN_OUTPUT_LOW,*/	/* WLAN_RST_N */
 	GPIO216_GPIO | PIN_INPUT_PULLDOWN,	/* WL_HOST_WAKE */
-	GPIO217_GPIO | PIN_INPUT_NOPULL,	/* T_FLASH_DETECT */
-	GPIO218_GPIO | PIN_INPUT_PULLDOWN,	/* TSP_INT_1V8 */
-	GPIO219_GPIO | PIN_OUTPUT_LOW,	/* LCD_PWR_EN */
+	GPIO217_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
+	GPIO218_GPIO | PIN_INPUT_PULLUP,  /* TSP_INT_1V8 */
+	GPIO219_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 
 	GPIO220_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO221_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
-/*	GPIO222_GPIO | PIN_OUTPUT_LOW,*/	/* BT_VREG_EN */
+/*	GPIO222_GPIO | PIN_INPUT_PULLDOWN,*//* NC */
 /*	GPIO223_GPIO | PIN_OUTPUT_LOW,*/	/* MEM_LDO_EN */
 	GPIO224_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO225_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
-	GPIO226_GPIO | PIN_INPUT_PULLDOWN, /* VGA_CAM_ID */
+	GPIO226_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
 	GPIO227_GPIO | PIN_INPUT_PULLDOWN,
 	GPIO228_GPIO | PIN_OUTPUT_LOW,	/* CAM_MCLK */
-	GPIO229_GPIO | PIN_INPUT_PULLDOWN,	/* TSP_SDA_1V8 */
-	GPIO230_GPIO | PIN_INPUT_PULLDOWN,	/* TSP_SCL_1V8 */
+	GPIO229_GPIO | PIN_INPUT_NOPULL, /* TSP_SDA_1V8 */
+	GPIO230_GPIO | PIN_INPUT_NOPULL, /* TSP_SCL_1V8 */
 
 	GPIO256_GPIO | PIN_INPUT_PULLDOWN,
 	GPIO257_GPIO | PIN_OUTPUT_HIGH,
@@ -698,27 +650,42 @@ static pin_cfg_t kyle_common_sleep_table[] = {
 	GPIO267_GPIO | PIN_INPUT_PULLDOWN,
 };
 
+static pin_cfg_t skomer_rev02_sleep_table[] = {
+	GPIO193_GPIO | PIN_INPUT_PULLDOWN,	/* NC */
+};
+
+static pin_cfg_t skomer_rev05_sleep_table[] = {
+	GPIO86_GPIO		| PIN_OUTPUT_LOW,	/* GPS_ON_OFF */
+};
+
 /*
  * This function is called to force gpio power save
  * settings during suspend.
  * This is a temporary solution until all drivers are
  * controlling their pin settings when in inactive mode.
  */
-static void kyle_pins_suspend_force(void)
+static void skomer_pins_suspend_force(void)
 {
-	nmk_config_pins(kyle_power_save_bank0,
-			ARRAY_SIZE(kyle_power_save_bank0));
+	nmk_config_pins(skomer_bringup_power_save_bank0,
+			ARRAY_SIZE(skomer_bringup_power_save_bank0));
 
 	if (!(sec_debug_settings &
 		(SEC_DBG_STM_APE_OPT | SEC_DBG_STM_MODEM_OPT))) {
 		/* not using SD card I/F for modem trace */
-		sleep_pins_config_pm(kyle_sdmmc_sleep,
-				ARRAY_SIZE(kyle_sdmmc_sleep));
+		sleep_pins_config_pm(skomer_bringup_sdmmc_sleep,
+				ARRAY_SIZE(skomer_bringup_sdmmc_sleep));
 	}
 
 	/* Apply sleep gpio setting */
-	nmk_config_pins(kyle_common_sleep_table,
-		ARRAY_SIZE(kyle_common_sleep_table));
+	nmk_config_pins(skomer_common_sleep_table,
+			ARRAY_SIZE(skomer_common_sleep_table));
+
+	if (system_rev == SKOMER_R0_2)
+		nmk_config_pins(skomer_rev02_sleep_table,
+				ARRAY_SIZE(skomer_rev02_sleep_table));
+	else if (system_rev >= SKOMER_R0_5)
+		nmk_config_pins(skomer_rev05_sleep_table,
+				ARRAY_SIZE(skomer_rev05_sleep_table));
 }
 
 /*
@@ -727,7 +694,7 @@ static void kyle_pins_suspend_force(void)
  * This is a temporary solution until all drivers are
  * controlling their pin settings when in inactive mode.
  */
-static void kyle_pins_suspend_force_mux(void)
+static void skomer_pins_suspend_force_mux(void)
 {
 	u32 bankaddr;
 
@@ -736,14 +703,14 @@ static void kyle_pins_suspend_force_mux(void)
 	 *
 	 * Bank0
 	 */
-	sleep_pins_config_pm_mux(kyle_power_save_bank0,
-				ARRAY_SIZE(kyle_power_save_bank0));
+	sleep_pins_config_pm_mux(skomer_bringup_power_save_bank0,
+				ARRAY_SIZE(skomer_bringup_power_save_bank0));
 
 	if (!(sec_debug_settings &
 		(SEC_DBG_STM_APE_OPT | SEC_DBG_STM_MODEM_OPT))) {
 		/* not using SD card I/F for modem trace */
-		sleep_pins_config_pm_mux(kyle_sdmmc_sleep,
-					ARRAY_SIZE(kyle_sdmmc_sleep));
+		sleep_pins_config_pm_mux(skomer_bringup_sdmmc_sleep,
+					ARRAY_SIZE(skomer_bringup_sdmmc_sleep));
 	}
 
 	/* Bank1 */
@@ -798,24 +765,20 @@ static void kyle_pins_suspend_force_mux(void)
 	writel(0         , bankaddr + NMK_GPIO_AFSLB);
 }
 
-
 void __init ssg_pins_init(void)
 {
-	nmk_config_pins(kyle_pins, ARRAY_SIZE(kyle_pins));
+	nmk_config_pins(skomer_bringup_pins,
+		ARRAY_SIZE(skomer_bringup_pins));
 
-	if (system_rev >= KYLE_ATT_R0_1){
-		nmk_config_pins(kyle_r0_1_pins, ARRAY_SIZE(kyle_r0_1_pins));
-		ux500_pins_add(kyle_r0_1_lookup_pins, ARRAY_SIZE(kyle_r0_1_lookup_pins));
-	} else if (system_rev == KYLE_ATT_R0_0){
-		nmk_config_pins(kyle_r0_0_pins, ARRAY_SIZE(kyle_r0_0_pins));
-		ux500_pins_add(kyle_lookup_pins, ARRAY_SIZE(kyle_lookup_pins));
-	}
+	if (system_rev >= SKOMER_R0_5)
+		nmk_config_pins(skomer_rev05_pins, ARRAY_SIZE(skomer_rev05_pins));
 
+	ux500_pins_add(skomer_bringup_lookup_pins,
+		ARRAY_SIZE(skomer_bringup_lookup_pins));
 	gps_pins_init();
-
 	sdmmc_pins_init();
-	suspend_set_pins_force_fn(kyle_pins_suspend_force,
-				  kyle_pins_suspend_force_mux);
+	suspend_set_pins_force_fn(skomer_pins_suspend_force,
+				  skomer_pins_suspend_force_mux);
 }
 
 int pins_for_u9500(void)
@@ -823,4 +786,3 @@ int pins_for_u9500(void)
 	/* required by STE code */
 	return 0;
 }
-

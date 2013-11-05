@@ -23,11 +23,11 @@
 #include <mach/tmd2672.h>
 #include <mach/px3215.h>
 #include <linux/mpu6050_input.h>
-#include "board-golden-regulators.h"
+#include "board-skomer-regulators.h"
 
 /* ab8500 regulator register initialization */
 static struct ab8500_regulator_reg_init
-	golden_ab8500_reg_init[AB8500_NUM_REGULATOR_REGISTERS] = {
+	skomer_ab8500_reg_init[AB8500_NUM_REGULATOR_REGISTERS] = {
 	/*
 	 * VanaRequestCtrl          = HP/LP depending on VxRequest
 	 * VextSupply1RequestCtrl   = HP/LP depending on VxRequest
@@ -291,7 +291,7 @@ static struct regulator_consumer_supply ab8500_sysclkreq_4_consumers[] = {
 /*
  * AB8500 regulators
  */
-struct regulator_init_data golden_ab8500_regulators[AB8500_NUM_REGULATORS] = {
+struct regulator_init_data skomer_ab8500_regulators[AB8500_NUM_REGULATORS] = {
 	/* supplies to the Sensors 3V */
 	[AB8500_LDO_AUX1] = {
 		.constraints = {
@@ -379,6 +379,7 @@ struct regulator_init_data golden_ab8500_regulators[AB8500_NUM_REGULATORS] = {
 			.min_uV = 1250000,
 			.max_uV = 1350000,
 			.input_uV = 1800000,
+			.always_on = 1,
 			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE |
 					  REGULATOR_CHANGE_STATUS |
 					  REGULATOR_CHANGE_MODE |
@@ -423,7 +424,7 @@ struct regulator_init_data golden_ab8500_regulators[AB8500_NUM_REGULATORS] = {
 /*
  * AB8500 external regulators
  */
-static struct regulator_init_data golden_ext_regulators[] = {
+static struct regulator_init_data skomer_ext_regulators[] = {
 	/* fixed Vbat supplies VSMPS1_EXT_1V8 */
 	[AB8500_EXT_SUPPLY1] = {
 		.constraints = {
@@ -455,18 +456,18 @@ static struct regulator_init_data golden_ext_regulators[] = {
 	},
 };
 
-struct ab8500_regulator_platform_data golden_ab8500_regulator_plat_data = {
-	.reg_init               = golden_ab8500_reg_init,
-	.num_reg_init           = ARRAY_SIZE(golden_ab8500_reg_init),
-	.regulator              = golden_ab8500_regulators,
-	.num_regulator          = ARRAY_SIZE(golden_ab8500_regulators),
-	.ext_regulator          = golden_ext_regulators,
-	.num_ext_regulator      = ARRAY_SIZE(golden_ext_regulators),
+struct ab8500_regulator_platform_data skomer_ab8500_regulator_plat_data = {
+	.reg_init               = skomer_ab8500_reg_init,
+	.num_reg_init           = ARRAY_SIZE(skomer_ab8500_reg_init),
+	.regulator              = skomer_ab8500_regulators,
+	.num_regulator          = ARRAY_SIZE(skomer_ab8500_regulators),
+	.ext_regulator          = skomer_ext_regulators,
+	.num_ext_regulator      = ARRAY_SIZE(skomer_ext_regulators),
 };
 
 
 /* ab8505 regulator register initialization */
-static struct ab8500_regulator_reg_init	golden_ab8505_reg_init[] = {
+static struct ab8500_regulator_reg_init	skomer_ab8505_reg_init[] = {
 	/*
 	 * VarmRequestCtrl
 	 * VsmpsCRequestCtrl
@@ -601,11 +602,7 @@ static struct ab8500_regulator_reg_init	golden_ab8505_reg_init[] = {
 	 * VsmpsAAutoMode
 	 * VsmpsAPWMMode
 	 */
-#if 0
-	INIT_REGULATOR_REGISTER(AB8505_VSMPSAREGU,             0x0f, 0x06),
-#else
 	INIT_REGULATOR_REGISTER(AB8505_VSMPSAREGU,             0x0f, 0x05),
-#endif
 	/*
 	 * VsmpsBRegu
 	 * VsmpsBSelCtrl
@@ -693,11 +690,11 @@ static struct ab8500_regulator_reg_init	golden_ab8505_reg_init[] = {
 	/*
 	 * Vaux4Regu                = force off
 	 */
-	INIT_REGULATOR_REGISTER(AB8505_VAUX4REGU,              0x03, 0x00),
+	INIT_REGULATOR_REGISTER(AB8505_VAUX4REGU,              0x03, 0x01),
 	/*
 	 * Vaux4Sel                 = 3.3 V
 	 */
-	INIT_REGULATOR_REGISTER(AB8505_VAUX4SEL,               0x0f, 0x0f),
+	INIT_REGULATOR_REGISTER(AB8505_VAUX4SEL,               0x0f, 0x0e),
 	/*
 	 * Vaux1Disch               = short discharge time
 	 * Vaux2Disch               = short discharge time
@@ -732,22 +729,21 @@ static struct ab8500_regulator_reg_init	golden_ab8505_reg_init[] = {
 	 * Vaux6Ena - disabled
 	 * Vaux6DisPulld
 	 */
-	INIT_REGULATOR_REGISTER(AB8505_CTRLVAUX6,              0x9f, 0x05),
+	INIT_REGULATOR_REGISTER(AB8505_CTRLVAUX6,              0x9f, 0x10),
 };
 
 static struct regulator_consumer_supply ab8505_vaux1_consumers[] = {
-	/* Proximity Sensor */
-#if defined(CONFIG_PROXIMITY_GP2A)
+	/* Proximity Sensor GP2A or TMD2672 */
 	REGULATOR_SUPPLY("vdd_proxi", "5-0044"),
-#endif
-#if defined(CONFIG_PROXIMITY_PX3215)
-	REGULATOR_SUPPLY("vdd_proxi", "5-001e"),
-#endif
 	/* Accel & Gyro MPU6050 */
 	REGULATOR_SUPPLY("vdd_mpu", "6-0068"),
 	/* Sensors HSCD */
 	REGULATOR_SUPPLY("vdd_alps", "8-000c"),
 	REGULATOR_SUPPLY("v_sensor_3v", "mmio_camera"),
+	/* BMA254 accelerometer device */
+	REGULATOR_SUPPLY("vdd-acc", "6-0018"),
+	/* HSCDTD008A compass */
+	REGULATOR_SUPPLY("vdd_hscdtd", "8-000c"),
 };
 
 static struct regulator_consumer_supply ab8505_vaux2_consumers[] = {
@@ -761,9 +757,16 @@ static struct regulator_consumer_supply ab8505_vaux3_consumers[] = {
 };
 
 static struct regulator_consumer_supply ab8505_vaux4_consumers[] = {
+	/* Proximity Sensor GP2A or TMD2672 */
+//	REGULATOR_SUPPLY("vio_proxi", "5-0048"),
+	/* Accel & Gyro MPU6050 */
+	REGULATOR_SUPPLY("vio_mpu", "6-0068"),
+	/* Sensors HSCD */
+	REGULATOR_SUPPLY("vio_alps", "8-000c"),
 	/* Camera PMIC */
 	REGULATOR_SUPPLY("v_sensor_1v8", "mmio_camera"),
 	REGULATOR_SUPPLY("v_led_3v3", "7-0020"),
+	REGULATOR_SUPPLY("v_lcd_3v0", NULL),
 };
 
 static struct regulator_consumer_supply ab8505_vaux5_consumers[] = {
@@ -773,23 +776,23 @@ static struct regulator_consumer_supply ab8505_vaux5_consumers[] = {
 static struct regulator_consumer_supply ab8505_vaux6_consumers[] = {
 	REGULATOR_SUPPLY("v-touchkey", NULL),
 	REGULATOR_SUPPLY("v-touchkey", "7-0020"),
+	REGULATOR_SUPPLY("v_lcd_1v8", NULL),
 };
 
 static struct regulator_consumer_supply ab8505_vaux8_consumers[] = {
-	/* Proximity Sensor */
-#if defined(CONFIG_PROXIMITY_GP2A)
-	REGULATOR_SUPPLY("vio_proxi", "5-0044"),
-#endif
-#if defined(CONFIG_PROXIMITY_PX3215)
-	REGULATOR_SUPPLY("vio_proxi", "5-001e"),
-#endif
+	/* Proximity Sensor PX3315*/
+	REGULATOR_SUPPLY("vio_proxi","5-0044"),
 	/* Accel & Gyro MPU6050 */
 	REGULATOR_SUPPLY("vio_inv", "6-0068"),
-	/* Sensors HSCD */
-	REGULATOR_SUPPLY("vio_mag", "8-000c"),
+
 	REGULATOR_SUPPLY("sensor_io_1.8v", NULL),
 	/* AB8505 audio codec device */
 	REGULATOR_SUPPLY("v-aux8", NULL),
+	/* BMA254 accelerometer device */
+	REGULATOR_SUPPLY("vio-acc", "6-0018"),	
+	/* Compass sensor HSCDTD008A */
+	REGULATOR_SUPPLY("vio_hscdtd", "8-000c"),
+
 };
 
 static struct regulator_consumer_supply ab8505_vadc_consumers[] = {
@@ -853,7 +856,7 @@ static struct regulator_consumer_supply ab8505_sysclkreq_4_consumers[] = {
 /*
  * AB8505 regulators
  */
-struct regulator_init_data golden_ab8505_regulators[AB8505_NUM_REGULATORS] = {
+struct regulator_init_data skomer_ab8505_regulators[AB8505_NUM_REGULATORS] = {
 	/* supplies to the Sensors 3V */
 	[AB8505_LDO_AUX1] = {
 		.constraints = {
@@ -1026,10 +1029,10 @@ struct regulator_init_data golden_ab8505_regulators[AB8505_NUM_REGULATORS] = {
 	},
 };
 
-struct ab8500_regulator_platform_data golden_ab8505_regulator_plat_data = {
-	.reg_init               = golden_ab8505_reg_init,
-	.num_reg_init           = ARRAY_SIZE(golden_ab8505_reg_init),
-	.regulator              = golden_ab8505_regulators,
-	.num_regulator          = ARRAY_SIZE(golden_ab8505_regulators),
+struct ab8500_regulator_platform_data skomer_ab8505_regulator_plat_data = {
+	.reg_init               = skomer_ab8505_reg_init,
+	.num_reg_init           = ARRAY_SIZE(skomer_ab8505_reg_init),
+	.regulator              = skomer_ab8505_regulators,
+	.num_regulator          = ARRAY_SIZE(skomer_ab8505_regulators),
 };
 

@@ -280,7 +280,7 @@ static int common_receive(struct shrm_dev *shrm, void *data,
 	dev_dbg(shrm->dev, "%s IN\n", __func__);
 #ifdef CONFIG_U8500_KERNEL_CLIENT
 	/* is the msg is for kernel client, call kernel client handler */
-	if (l2_header == SYSCLK3_MESSAGING) {
+	if (l2_header == SYSCLK2_MESSAGING) {
 		u8500_kernel_client(l2_header, data);
 		goto exit;
 	}
@@ -354,6 +354,10 @@ static int common_receive(struct shrm_dev *shrm, void *data,
 			"scheduling the ipcctrl tasklet from %s!\n", __func__);
 			tasklet_schedule(&ipcdata_rcv_tasklet);
 	}
+
+#ifdef CONFIG_U8500_KERNEL_CLIENT
+	exit:
+#endif
 
 	dev_dbg(shrm->dev, "%s OUT\n", __func__);
 	return ret;

@@ -38,7 +38,7 @@
 #define L2_HEADER_RTC_CALIBRATION		0xC8
 #define L2_HEADER_IPCCTRL 0xDC
 #define L2_HEADER_IPCDATA 0xDD
-#define L2_HEADER_SYSCLK3	0xE6
+#define L2_HEADER_SYSCLK2	0xE6
 #define MAX_PAYLOAD 1024
 #define MOD_STUCK_TIMEOUT	6
 #define FIFO_FULL_TIMEOUT	1
@@ -1065,11 +1065,13 @@ int shrm_protocol_init(struct shrm_dev *shrm,
 #ifdef CONFIG_U8500_KERNEL_CLIENT
 	err = u8500_kernel_client_init(shrm);
 #endif
+#if 0
 	/*
 	 * Since modem is loaded via kernel, kernel should make sure to set
 	 * host access port, to enable modem.
 	 */
 	modem_request(shrm->modem);
+#endif
 	return err;
 
 #ifdef CONFIG_U8500_SHRM_MODEM_SILENT_RESET
@@ -1392,7 +1394,7 @@ int shm_write_msg(struct shrm_dev *shrm, u8 l2_header,
 			(l2_header == L2_HEADER_RTC_CALIBRATION) ||
 			(l2_header == L2_HEADER_IPCCTRL) ||
 			(l2_header == L2_HEADER_IPCDATA) ||
-			(l2_header == L2_HEADER_SYSCLK3)) {
+			(l2_header == L2_HEADER_SYSCLK2)) {
 		channel = 0;
 		if (shrm_common_tx_state == SHRM_SLEEP_STATE)
 			shrm_common_tx_state = SHRM_PTR_FREE;

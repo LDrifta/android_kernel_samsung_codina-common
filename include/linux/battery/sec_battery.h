@@ -112,6 +112,7 @@ struct sec_battery_info {
 	unsigned long charging_start_time;
 	unsigned long charging_passed_time;
 	unsigned long charging_next_time;
+	unsigned long charging_fullcharged_time;
 
 	/* temperature check */
 	int temperature;	/* battery temperature */
@@ -131,6 +132,7 @@ struct sec_battery_info {
 
 	/* charging */
 	unsigned int charging_mode;
+	bool is_recharging;
 	int cable_type;
 	int extended_cable_type;
 	struct wake_lock cable_wake_lock;

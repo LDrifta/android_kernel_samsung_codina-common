@@ -334,4 +334,11 @@ config BACKLIGHT_KTD259
 	  Say Y to enable Kinetik KTD259 backlight driver.
 endif # BACKLIGHT_CLASS_DEVICE
 
+config BACKLIGHT_KTD253
+	tristate "Backlight Driver for Kinetik KTD253"
+	depends on BACKLIGHT_CLASS_DEVICE
+	help
+	  Say Y to enable Kinetik KTD253 backlight driver.
+endif # BACKLIGHT_CLASS_DEVICE
+
 endif # BACKLIGHT_LCD_SUPPORT

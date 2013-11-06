@@ -50,7 +50,7 @@
 #define RTC_CAL_MESSAGING (0xC8)
 #define IPCCTRL (0xDC)
 #define IPCDATA (0xDD)
-#define SYSCLK3_MESSAGING (0xE6)
+#define SYSCLK2_MESSAGING (0xE6)
 
 #define COMMON_CHANNEL		0
 #define AUDIO_CHANNEL		1

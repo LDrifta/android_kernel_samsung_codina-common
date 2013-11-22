@@ -309,6 +309,9 @@ static int mmc_read_switch(struct mmc_card *card)
 	if (status[13] & SD_MODE_HIGH_SPEED)
 		card->sw_caps.hs_max_dtr = HIGH_SPEED_MAX_DTR;
 
+	if (status[13] & UHS_SDR50_BUS_SPEED)
+		card->sw_caps.hs_max_dtr = 50000000;
+
 	if (card->scr.sda_spec3) {
 		card->sw_caps.sd3_bus_mode = status[13];
 
@@ -1069,25 +1072,19 @@ static void mmc_sd_detect(struct mmc_host *host)
 {
 	int err = 0;
 #ifdef CONFIG_MMC_PARANOID_SD_INIT
-	int retries = 5;
-#endif
-
-#ifdef _MMC_SAFE_ACCESS_
-    int  slowcount = 100;
+        int retries = 5;
 #endif
 
 	BUG_ON(!host);
 	BUG_ON(!host->card);
-
+       
 	mmc_claim_host(host);
 
-/*
- * Just check if our card has been removed.
- */
-
-send_again:
+	/*
+	 * Just check if our card has been removed.
+	 */
 #ifdef CONFIG_MMC_PARANOID_SD_INIT
-	while (retries) {
+	while(retries) {
 		err = _mmc_detect_card_removed(host);
 		if (err) {
 			retries--;
@@ -1099,36 +1096,18 @@ send_again:
 	if (!retries) {
 		printk(KERN_ERR "%s(%s): Unable to re-detect card (%d)\n",
 		       __func__, mmc_hostname(host), err);
-	} else {
-#ifdef _MMC_SAFE_ACCESS_
-		slowcount = slowcount-4;
-#endif
 	}
 #else
 	err = _mmc_detect_card_removed(host);
 #endif
-
-#ifdef _MMC_SAFE_ACCESS_
-	slowcount--;
-	if ((mmc_is_available == 0) && (err == 0) && (slowcount != 0)) {
-/*wait 1s until sd card perfectly removed*/
-		mdelay(10);
-		goto send_again;
-		retries = 5;
-	}
-#endif
-
 	mmc_release_host(host);
 
-#ifdef _MMC_SAFE_ACCESS_
-    if (err || (slowcount == 0 && mmc_is_available == 0)) {
-#else
 	if (err) {
-#endif
 		mmc_sd_remove(host);
 
 		mmc_claim_host(host);
 		mmc_detach_bus(host);
+		mmc_power_off(host);
 		mmc_release_host(host);
 	}
 }

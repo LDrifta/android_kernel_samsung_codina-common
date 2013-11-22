@@ -53,7 +53,6 @@ struct cfcnfg *get_cfcnfg(struct net *net)
 	struct caif_net *caifn;
 	BUG_ON(!net);
 	caifn = net_generic(net, caif_net_id);
-	BUG_ON(!caifn);
 	return caifn->cfg;
 }
 EXPORT_SYMBOL(get_cfcnfg);
@@ -63,7 +62,6 @@ static struct caif_device_entry_list *caif_device_list(struct net *net)
 	struct caif_net *caifn;
 	BUG_ON(!net);
 	caifn = net_generic(net, caif_net_id);
-	BUG_ON(!caifn);
 	return &caifn->caifdevs;
 }
 
@@ -92,7 +90,6 @@ static struct caif_device_entry *caif_device_alloc(struct net_device *dev)
 	struct caif_device_entry *caifd;
 
 	caifdevs = caif_device_list(dev_net(dev));
-	BUG_ON(!caifdevs);
 
 	caifd = kzalloc(sizeof(*caifd), GFP_KERNEL);
 	if (!caifd)
@@ -112,7 +109,7 @@ static struct caif_device_entry *caif_get(struct net_device *dev)
 	struct caif_device_entry_list *caifdevs =
 	    caif_device_list(dev_net(dev));
 	struct caif_device_entry *caifd;
-	BUG_ON(!caifdevs);
+
 	list_for_each_entry_rcu(caifd, &caifdevs->list, list) {
 		if (caifd->netdev == dev)
 			return caifd;
@@ -213,8 +210,7 @@ static int caif_device_notify(struct notifier_block *me, unsigned long what,
 	enum cfcnfg_phy_preference pref;
 	enum cfcnfg_phy_type phy_type;
 	struct cfcnfg *cfg;
-	struct caif_device_entry_list *caifdevs =
-	    caif_device_list(dev_net(dev));
+	struct caif_device_entry_list *caifdevs;
 
 	if (dev->type != ARPHRD_CAIF)
 		return 0;
@@ -222,6 +218,8 @@ static int caif_device_notify(struct notifier_block *me, unsigned long what,
 	cfg = get_cfcnfg(dev_net(dev));
 	if (cfg == NULL)
 		return 0;
+
+	caifdevs = caif_device_list(dev_net(dev));
 
 	switch (what) {
 	case NETDEV_REGISTER:
@@ -352,7 +350,7 @@ static struct notifier_block caif_device_notifier = {
 static int caif_init_net(struct net *net)
 {
 	struct caif_net *caifn = net_generic(net, caif_net_id);
-	BUG_ON(!caifn);
+
 	INIT_LIST_HEAD(&caifn->caifdevs.list);
 	mutex_init(&caifn->caifdevs.lock);
 
@@ -417,7 +415,7 @@ static int __init caif_device_init(void)
 {
 	int result;
 
-	result = register_pernet_device(&caif_net_ops);
+	result = register_pernet_subsys(&caif_net_ops);
 
 	if (result)
 		return result;
@@ -430,9 +428,9 @@ static int __init caif_device_init(void)
 
 static void __exit caif_device_exit(void)
 {
-	unregister_pernet_device(&caif_net_ops);
 	unregister_netdevice_notifier(&caif_device_notifier);
 	dev_remove_pack(&caif_packet_type);
+	unregister_pernet_subsys(&caif_net_ops);
 }
 
 module_init(caif_device_init);
